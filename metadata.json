@@ -1,0 +1,5 @@
+{
+  "name": "Cashubux Task App",
+  "description": "A web application for completing tasks, earning coins, and managing withdrawals, built with React and TON blockchain integration.",
+  "requestFramePermissions": []
+}

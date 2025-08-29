@@ -1,0 +1,161 @@
+import type { ReactNode } from 'react';
+
+export interface SpaceDefenderProgress {
+  weaponLevel: number;
+  shieldLevel: number;
+  speedLevel: number;
+}
+
+export interface StreetRacingProgress {
+  currentCar: number;
+  unlockedCars: number[];
+  carUpgrades: {
+      [key: number]: {
+          speed: number;
+          acceleration: number;
+          handling: number;
+          nitro: number;
+      }
+  };
+  careerPoints: number;
+  adProgress: {
+    engine: number;
+    tires: number;
+    nitro: number;
+  };
+}
+
+
+export interface User {
+  id: number;
+  name: string;
+  coins: number;
+  ton: number;
+  referralEarnings: number;
+  spins: number;
+  ad_credit: number;
+  adsWatchedToday: number;
+  tasksCompletedTodayForSpin: number;
+  friendsInvitedTodayForSpin: number;
+  spaceDefenderProgress: SpaceDefenderProgress;
+  streetRacingProgress: StreetRacingProgress;
+  banned?: boolean;
+}
+
+export interface Task {
+  id:string;
+  icon: ReactNode;
+  title: string;
+  reward: number;
+  claimed?: boolean;
+  category?: 'Daily' | 'Game' | 'Social' | 'Partner';
+}
+
+// export interface DailyTask extends Task {
+//     mandatory?: boolean;
+//     link?: string;
+//     action?: 'link' | 'share';
+// }
+
+
+// types.ts
+export interface DailyTask {
+  id: number;
+  title: string;
+  reward: number;
+  category: string;
+  link: string;
+  status: string;
+  completions: number;
+  ad_network_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+
+export interface GameTask extends Task {}
+
+export interface Quest {
+  id: string;
+  icon: ReactNode;
+  title: string;
+  reward: number;
+  currentProgress: number;
+  totalProgress: number;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'Withdrawal' | 'Deposit';
+  amount: number;
+  currency: 'TON' | 'Coins';
+  date: string;
+  status: 'Completed' | 'Pending' | 'Failed';
+}
+
+export interface CompletionTier {
+  completions: number;
+  cost: number;
+}
+
+export interface LanguageOption {
+  id: string;
+  name: string;
+}
+
+export interface Friend {
+  id: number;
+  name: string;
+}
+
+// --- Enums (match your Python enums) ---
+
+// export type TaskCategory = 'Daily' | 'Game' | 'Social' | 'Partner';
+export type CampaignStatus = 'Active' | 'Paused' | 'Completed';
+export type TransactionType = 'Withdrawal' | 'Deposit';
+export type TransactionCurrency = 'TON' | 'Coins';
+export type TransactionStatus = 'Completed' | 'Pending' | 'Failed';
+export type PromoCodeType = 'COINS' | 'TON_AD_CREDIT' | 'SPINS';
+
+// --- UserCampaign ---
+export interface UserCampaign {
+  id: number;               // auto-increment
+  creator_id: number;       // FK -> users.id
+  link: string;
+  langs: string[];          // JSON array
+  status: CampaignStatus;
+  completions: number;
+  goal: number;             // target number of users
+  cost: number;             // Decimal from DB (returned as string from API)
+  category: string;
+  type: string;             // "user_campaign" | "partner_campaign"
+}
+
+// --- PartnerCampaign ---
+export interface PartnerCampaign extends UserCampaign {
+  requiredLevel: number;
+}
+
+
+export interface PromoCode {
+  code: string;
+  type: 'COINS' | 'TON_AD_CREDIT' | 'SPINS';
+  value: number;
+  maxUses: number;
+  usedBy: number[]; // array of user IDs
+  expiresAt?: string; // ISO date string
+}
+
+export interface AdNetwork {
+    id: string;
+    name: string;
+    code: string;
+    enabled: boolean;
+}
+
+export interface AdminUser {
+    id: number;
+    username: string;
+    password?: string; // Only for creation/update
+    permissions: string[];
+}
