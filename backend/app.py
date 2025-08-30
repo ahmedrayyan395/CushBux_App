@@ -29,7 +29,12 @@ from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__)
 # CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+# CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+CORS(app, 
+     origins=["http://localhost:3000"],
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 
 app.secret_key = 'replace-this-with-your-own-very-secret-key'
 # Add JWT secret to your config
@@ -691,7 +696,7 @@ def auth_with_telegram():
 
 
 @app.route("/addusercampaigns", methods=["POST"])
-@jwt_required  # Use this or @login_required depending on your needs
+@jwt_required  # Use this or  depending on your needs
 def create_campaign():
     """
     Creates either a UserCampaign or a PartnerCampaign.
@@ -783,7 +788,7 @@ def create_campaign():
 
 
 # @app.route('/usercampaigns', methods=['GET'])
-# @jwt_required  # Use this or @login_required depending on your needs
+# @jwt_required  # Use this or  depending on your needs
 # def fetchUserCampaigns():
 #     """Returns all campaigns (both User and Partner)."""
 #     campaigns = UserCampaign.query.filter(
@@ -799,7 +804,7 @@ def create_campaign():
 
 
 # @app.route('/campaigns', methods=['GET'])
-# @jwt_required  # Use this or @login_required depending on your needs
+# @jwt_required  # Use this or  depending on your needs
 # def get_all_campaigns():
 #     """Returns all campaigns (both User and Partner)."""
 #     campaigns = UserCampaign.query.order_by(UserCampaign.id).all()
@@ -810,7 +815,7 @@ def create_campaign():
 
 
 @app.route('/my-campaigns', methods=['GET'])
-@jwt_required  # Use this or @login_required depending on your needs
+@jwt_required  # Use this or  depending on your needs
 def get_my_created_campaigns():
     
     
@@ -1391,3 +1396,395 @@ def get_user_daily_task_status():
 
 
 
+# Admin routes
+
+# Admin role decorator
+
+@app.route('/users', methods=['GET'])
+# @jwt_required
+def get_all_users():
+    try:
+        
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        banned_filter = request.args.get('banned', type=str)
+        
+        # Build query
+        query = User.query
+        
+        # Apply filters
+        if banned_filter is not None:
+            if banned_filter.lower() == 'true':
+                query = query.filter(User.banned == True)
+            elif banned_filter.lower() == 'false':
+                query = query.filter(User.banned == False)
+        
+        # Order by most recent first (assuming ID is sequential)
+        query = query.order_by(User.id.desc())
+        
+        # Paginate results
+        paginated_users = query.paginate(
+            page=page, 
+            per_page=per_page, 
+            error_out=False
+        )
+        
+        users_data = [user.to_dict() for user in paginated_users.items]
+        
+        return jsonify({
+            "users": users_data,
+            "total": paginated_users.total,
+            "pages": paginated_users.pages,
+            "current_page": page
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching users: {str(e)}")
+        return jsonify({"error": "Failed to fetch users"}), 500
+
+
+@app.route('/admin/users/<int:user_id>', methods=['GET'])
+def get_user_by_id(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        return jsonify(user.to_dict())
+    except Exception as e:
+        app.logger.error(f"Error fetching user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to fetch user"}), 500
+
+@app.route('/admin/users/<int:user_id>', methods=['PUT'])
+
+
+def update_user(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        # Update allowed fields
+        allowed_fields = [
+            'coins', 'ton', 'referral_earnings', 'spins', 'ad_credit',
+            'ads_watched_today', 'tasks_completed_today_for_spin',
+            'friends_invited_today_for_spin', 'banned', 'name'
+        ]
+        
+        for field in allowed_fields:
+            if field in data:
+                if field in ['ton', 'ad_credit']:
+                    # Ensure numeric values are converted properly
+                    try:
+                        setattr(user, field, float(data[field]))
+                    except (ValueError, TypeError):
+                        return jsonify({"error": f"Invalid value for {field}"}), 400
+                else:
+                    setattr(user, field, data[field])
+        
+        # Handle game progress updates
+        game_progress_fields = ['space_defender_progress', 'street_racing_progress']
+        for field in game_progress_fields:
+            if field in data:
+                setattr(user, field, data[field])
+        
+        db.session.commit()
+        
+        return jsonify(user.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to update user"}), 500
+
+@app.route('/admin/users/<int:user_id>/ban', methods=['PATCH'])
+
+
+def toggle_user_ban(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        if 'banned' not in data:
+            return jsonify({"error": "banned field required"}), 400
+        
+        user.banned = bool(data['banned'])
+        db.session.commit()
+        
+        return jsonify(user.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating ban status for user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to update ban status"}), 500
+
+@app.route('/admin/users/<int:user_id>/currency', methods=['PATCH'])
+
+
+def update_user_currency(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        currency_fields = ['coins', 'ton', 'referral_earnings', 'spins', 'ad_credit']
+        
+        for field in currency_fields:
+            if field in data:
+                if field in ['ton', 'ad_credit']:
+                    try:
+                        setattr(user, field, float(data[field]))
+                    except (ValueError, TypeError):
+                        return jsonify({"error": f"Invalid value for {field}"}), 400
+                else:
+                    try:
+                        setattr(user, field, int(data[field]))
+                    except (ValueError, TypeError):
+                        return jsonify({"error": f"Invalid value for {field}"}), 400
+        
+        db.session.commit()
+        
+        return jsonify(user.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating currency for user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to update currency"}), 500
+
+@app.route('/admin/users/<int:user_id>/game-progress', methods=['PATCH'])
+
+
+def update_user_game_progress(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        game_progress_fields = ['space_defender_progress', 'street_racing_progress']
+        
+        for field in game_progress_fields:
+            if field in data:
+                setattr(user, field, data[field])
+        
+        db.session.commit()
+        
+        return jsonify(user.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error updating game progress for user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to update game progress"}), 500
+
+@app.route('/admin/users/<int:user_id>/reset-daily', methods=['POST'])
+
+
+def reset_user_daily_stats(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        
+        # Reset daily stats
+        user.ads_watched_today = 0
+        user.tasks_completed_today_for_spin = 0
+        user.friends_invited_today_for_spin = 0
+        
+        db.session.commit()
+        
+        return jsonify(user.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error resetting daily stats for user {user_id}: {str(e)}")
+        return jsonify({"error": "Failed to reset daily stats"}), 500
+
+@app.route('/admin/users/search', methods=['GET'])
+
+
+def search_users():
+    try:
+        query = request.args.get('query', '')
+        field = request.args.get('field', 'name')
+        
+        if not query:
+            return jsonify([])
+        
+        if field == 'id':
+            # Search by ID
+            try:
+                user_id = int(query)
+                users = User.query.filter(User.id == user_id).all()
+            except ValueError:
+                users = []
+        elif field == 'name':
+            # Search by name (case insensitive)
+            users = User.query.filter(
+                User.name.ilike(f'%{query}%')
+            ).order_by(User.name).limit(50).all()
+        else:
+            return jsonify({"error": "Invalid search field"}), 400
+        
+        users_data = [user.to_dict() for user in users]
+        return jsonify(users_data)
+        
+    except Exception as e:
+        app.logger.error(f"Error searching users: {str(e)}")
+        return jsonify({"error": "Failed to search users"}), 500
+
+@app.route('/admin/users/bulk-update', methods=['POST'])
+
+
+def bulk_update_users():
+    try:
+        data = request.get_json()
+        
+        if not data or 'userIds' not in data or 'updates' not in data:
+            return jsonify({"error": "userIds and updates required"}), 400
+        
+        user_ids = data['userIds']
+        updates = data['updates']
+        
+        # Validate user IDs
+        if not isinstance(user_ids, list) or len(user_ids) == 0:
+            return jsonify({"error": "Invalid user IDs"}), 400
+        
+        # Get allowed fields for bulk update
+        allowed_fields = [
+            'coins', 'ton', 'referral_earnings', 'spins', 'ad_credit', 'banned'
+        ]
+        
+        # Filter updates to only allowed fields
+        filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+        
+        if not filtered_updates:
+            return jsonify({"error": "No valid fields to update"}), 400
+        
+        # Update users in bulk
+        updated_users = []
+        for user_id in user_ids:
+            user = User.query.get(user_id)
+            if user:
+                for field, value in filtered_updates.items():
+                    if field in ['ton', 'ad_credit']:
+                        setattr(user, field, float(value))
+                    else:
+                        setattr(user, field, value)
+                updated_users.append(user)
+        
+        db.session.commit()
+        
+        # Return updated user data
+        users_data = [user.to_dict() for user in updated_users]
+        return jsonify(users_data)
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error in bulk update: {str(e)}")
+        return jsonify({"error": "Failed to bulk update users"}), 500
+
+@app.route('/admin/users/export', methods=['GET'])
+
+
+def export_users():
+    try:
+        format_type = request.args.get('format', 'json')
+        
+        # Get all users (consider pagination for large datasets)
+        users = User.query.order_by(User.id).all()
+        
+        if format_type == 'csv':
+            # Create CSV output
+            output = StringIO()
+            writer = csv.writer(output)
+            
+            # Write header
+            writer.writerow([
+                'ID', 'Name', 'Coins', 'TON', 'Referral Earnings', 'Spins', 
+                'Ad Credit', 'Ads Watched Today', 'Tasks Completed Today',
+                'Friends Invited Today', 'Banned', 'Created At'
+            ])
+            
+            # Write data
+            for user in users:
+                writer.writerow([
+                    user.id,
+                    user.name,
+                    user.coins,
+                    float(user.ton),
+                    user.referral_earnings,
+                    user.spins,
+                    float(user.ad_credit),
+                    user.ads_watched_today,
+                    user.tasks_completed_today_for_spin,
+                    user.friends_invited_today_for_spin,
+                    user.banned,
+                    user.created_at.isoformat() if hasattr(user, 'created_at') else ''
+                ])
+            
+            output.seek(0)
+            
+            return Response(
+                output.getvalue(),
+                mimetype='text/csv',
+                headers={
+                    'Content-Disposition': f'attachment; filename=users_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+                }
+            )
+            
+        else:  # JSON format
+            users_data = [user.to_dict() for user in users]
+            
+            return Response(
+                json.dumps(users_data, indent=2),
+                mimetype='application/json',
+                headers={
+                    'Content-Disposition': f'attachment; filename=users_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+                }
+            )
+            
+    except Exception as e:
+        app.logger.error(f"Error exporting users: {str(e)}")
+        return jsonify({"error": "Failed to export users"}), 500
+
+@app.route('/admin/users/stats', methods=['GET'])
+
+
+def get_user_stats():
+    try:
+        # Get total user count
+        total_users = User.query.count()
+        
+        # Get active/banned counts
+        active_users = User.query.filter_by(banned=False).count()
+        banned_users = User.query.filter_by(banned=True).count()
+        
+        # Get currency totals
+        total_coins = db.session.query(func.sum(User.coins)).scalar() or 0
+        total_ton = db.session.query(func.sum(User.ton)).scalar() or 0
+        total_spins = db.session.query(func.sum(User.spins)).scalar() or 0
+        
+        # Get average values
+        avg_coins = db.session.query(func.avg(User.coins)).scalar() or 0
+        avg_ton = db.session.query(func.avg(User.ton)).scalar() or 0
+        
+        return jsonify({
+            "total_users": total_users,
+            "active_users": active_users,
+            "banned_users": banned_users,
+            "total_coins": total_coins,
+            "total_ton": float(total_ton),
+            "total_spins": total_spins,
+            "avg_coins": float(avg_coins),
+            "avg_ton": float(avg_ton)
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error getting user stats: {str(e)}")
+        return jsonify({"error": "Failed to get user statistics"}), 500
+
+# Add created_at field to User model if not exists
+# class User(db.Model):
+#     # ... existing fields ...
+#     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
