@@ -1,9 +1,11 @@
 import type { User, DailyTask, GameTask, Quest, Transaction, Friend, UserCampaign, PartnerCampaign, PromoCode, AdNetwork, AdminUser, Task } from '../types';
 import { INITIAL_USER, DAILY_TASKS, GAME_TASKS, QUESTS, TRANSACTIONS, CONVERSION_RATE, MOCK_FRIENDS, MOCK_USER_CAMPAIGNS, MOCK_PROMO_CODES, SPIN_WHEEL_PRIZES, SPIN_STORE_PACKAGES, MOCK_ADMINS, generateMockUsers, ICONS } from '../constants';
+import { get } from 'http';
 
 // In-memory store
 let users: User[] = [ { ...INITIAL_USER }, ...generateMockUsers(50) ];
 let dailyTasks: DailyTask[] = [...DAILY_TASKS];
+export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
 
 
 
@@ -33,9 +35,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 
 
 // const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://cf4f8aaf0d34.ngrok-free.app';
+
+// const API_BASE_URL = 'https://b288ef9b791f.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -139,6 +142,8 @@ export const apiFetch = async <T = any>(
     headers,
     body: options.body,
   });
+
+
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -322,58 +327,6 @@ export const addUserCampaignAPI = async (
 };
 
 
-export const createAdminTask = async (task: Omit<Task, 'id' | 'icon'>): Promise<{ success: boolean, task?: Task }> => {
-    await simulateDelay();
-    const newTask: Task = {
-        ...task,
-        id: `task-${Date.now()}`,
-        icon: ICONS.tasks, // Generic icon for admin-added tasks
-    };
-
-    switch (task.category) {
-        case 'Daily':
-            dailyTasks.push({ ...newTask, mandatory: false });
-            break;
-        case 'Game':
-             gameTasks.push({
-                id: newTask.id,
-                link: 'https://t.me/example_game_bot',
-                status: 'Active',
-                completions: 0,
-                goal: 1, // Simplified
-                cost: 0.1, // Simplified
-                category: 'Game'
-            });
-            break;
-        case 'Social':
-            socialTasks.push({
-                id: newTask.id,
-                link: 'https://t.me/example_social_channel',
-                status: 'Active',
-                completions: 0,
-                goal: 1, // Simplified
-                cost: 0.1, // Simplified
-                category: 'Social'
-            });
-            break;
-        case 'Partner':
-             partnerCampaigns.push({
-                id: newTask.id,
-                link: 'https://t.me/example_partner_bot',
-                status: 'Active',
-                completions: 0,
-                goal: 1,
-                cost: 1,
-                requiredLevel: 5,
-                category: 'Game' // Partner tasks are a form of game task
-             });
-             break;
-        default:
-            return { success: false };
-    }
-    return { success: true, task: newTask };
-};
-
 
 // In your services/api.ts file
 export const checkCampaignCompletion = async (campaignIds: number[]): Promise<number[]> => {
@@ -488,7 +441,7 @@ export const toggleAdNetwork = async (
 
 
 
-export const createDailyTask = async (task: DailyTask) => {
+export const createDailyTask = async (task: CreateDailyTaskDTO) => {
   return apiFetch('/daily-tasks', {
     method: 'POST',
     body: JSON.stringify(task),
@@ -566,25 +519,360 @@ export const updateDailyTaskStatus = async (
 
 
 
+// services/api.ts
+// export const fetchAllUsers = async (): Promise<User[]> => {
+//   try {
+//     console.log('[fetchAllUsers] Making API call to /users');
+    
+//     const response = await apiFetch('/users', {
+//       method: 'GET',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//     });
+
+//     console.log('[fetchAllUsers] Response received:', response);
+//     console.log('[fetchAllUsers] Response.ok:', response?.ok);
+//     console.log('[fetchAllUsers] Response status:', response?.status);
+
+//     // Check if response exists and has the expected properties
+//     if (!response) {
+//       throw new Error('No response received from server');
+//     }
+
+//     if (typeof response.ok === 'undefined') {
+//       // If response doesn't have ok property, it might be the actual data
+//       console.log('[fetchAllUsers] Response does not have ok property, assuming it\'s the data');
+//       return response as unknown as User[];
+//     }
+
+//     if (!response.ok) {
+//       const errorText = await response.text().catch(() => 'Unknown error');
+//       throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+//     }
+
+//     // Try to parse as JSON, but handle cases where it might already be parsed
+//     let data;
+//     if (typeof response.json === 'function') {
+//       data = await response.json();
+//     } else {
+//       // If response doesn't have json method, assume it's already the data
+//       data = response;
+//     }
+
+//     console.log('[fetchAllUsers] Parsed data:', data);
+//     return data;
+
+//   } catch (error) {
+//     console.error('Error fetching users:', error);
+//     throw new Error('Failed to fetch users');
+//   }
+// };
 
 
 
 
+// Interface for paginated response
+interface PaginatedResponse<T> {
+  users: T[];
+  total: number;
+  pages: number;
+  current_page: number;
+}
 
+export const fetchAllUsers = async (page: number = 1, perPage: number = 50, banned?: boolean): Promise<PaginatedResponse<User>> => {
+  try {
+    console.log('[fetchAllUsers] Making API call to /admin/users');
+    
+    const params = new URLSearchParams();
+    params.append('page', page.toString());
+    params.append('per_page', perPage.toString());
+    
+    if (banned !== null) {
+      params.append('banned', banned.toString());
+    }
 
+    const response = await apiFetch(`/users?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
+    console.log('[fetchAllUsers] Response received:', response);
+    return response as PaginatedResponse<User>;
 
+  } catch (error) {
+    console.error('Failed to fetch all users:', error);
+    // Return empty paginated response on error
+    return {
+      users: [],
+      total: 0,
+      pages: 0,
+      current_page: page
+    };
+  }
+};
 
+export const fetchUserById = async (userId: string): Promise<User> => {
+  try {
+    console.log(`[fetchUserById] Making API call to /admin/users/${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
+    console.log(`[fetchUserById] Response received:`, response);
+    return response as User;
 
+  } catch (error) {
+    console.error(`Failed to fetch user ${userId}:`, error);
+    throw error;
+  }
+};
 
+export const updateUser = async (userId: string, userData: Partial<User>): Promise<User> => {
+  try {
+    console.log(`[updateUser] Making API call to update user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(userData)
+    });
 
+    console.log(`[updateUser] Response received:`, response);
+    return response as User;
 
+  } catch (error) {
+    console.error(`Failed to update user ${userId}:`, error);
+    throw error;
+  }
+};
 
+export const banUser = async (userId: string): Promise<User> => {
+  try {
+    console.log(`[banUser] Making API call to ban user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}/ban`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ banned: true })
+    });
 
+    console.log(`[banUser] Response received:`, response);
+    return response as User;
 
+  } catch (error) {
+    console.error(`Failed to ban user ${userId}:`, error);
+    throw error;
+  }
+};
 
+export const unbanUser = async (userId: string): Promise<User> => {
+  try {
+    console.log(`[unbanUser] Making API call to unban user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}/ban`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ banned: false })
+    });
 
+    console.log(`[unbanUser] Response received:`, response);
+    return response as User;
+
+  } catch (error) {
+    console.error(`Failed to unban user ${userId}:`, error);
+    throw error;
+  }
+};
+
+export const updateUserCurrency = async (userId: string, currencyData: {
+  coins?: number;
+  ton?: number;
+  referral_earnings?: number;
+  spins?: number;
+  ad_credit?: number;
+}): Promise<User> => {
+  try {
+    console.log(`[updateUserCurrency] Making API call to update currency for user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}/currency`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(currencyData)
+    });
+
+    console.log(`[updateUserCurrency] Response received:`, response);
+    return response as User;
+
+  } catch (error) {
+    console.error(`Failed to update currency for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+export const updateGameProgress = async (userId: string, gameData: {
+  space_defender_progress?: any;
+  street_racing_progress?: any;
+}): Promise<User> => {
+  try {
+    console.log(`[updateGameProgress] Making API call to update game progress for user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}/game-progress`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(gameData)
+    });
+
+    console.log(`[updateGameProgress] Response received:`, response);
+    return response as User;
+
+  } catch (error) {
+    console.error(`Failed to update game progress for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+export const resetDailyStats = async (userId: string): Promise<User> => {
+  try {
+    console.log(`[resetDailyStats] Making API call to reset daily stats for user ${userId}`);
+    
+    const response = await apiFetch(`/admin/users/${userId}/reset-daily`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({})
+    });
+
+    console.log(`[resetDailyStats] Response received:`, response);
+    return response as User;
+
+  } catch (error) {
+    console.error(`Failed to reset daily stats for user ${userId}:`, error);
+    throw error;
+  }
+};
+
+export const searchUsers = async (query: string, field: string = 'name'): Promise<User[]> => {
+  try {
+    console.log(`[searchUsers] Making API call to search users with query "${query}"`);
+    
+    const params = new URLSearchParams();
+    params.append('query', query);
+    params.append('field', field);
+
+    const response = await apiFetch(`/admin/users/search?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    console.log(`[searchUsers] Response received:`, response);
+    return response as User[];
+
+  } catch (error) {
+    console.error(`Failed to search users with query "${query}":`, error);
+    return [];
+  }
+};
+
+export const bulkUpdateUsers = async (userIds: string[], updates: Partial<User>): Promise<User[]> => {
+  try {
+    console.log(`[bulkUpdateUsers] Making API call to bulk update ${userIds.length} users`);
+    
+    const response = await apiFetch(`/admin/users/bulk-update`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userIds, updates })
+    });
+
+    console.log(`[bulkUpdateUsers] Response received:`, response);
+    return response as User[];
+
+  } catch (error) {
+    console.error('Failed to bulk update users:', error);
+    throw error;
+  }
+};
+
+export const exportUsers = async (format: 'csv' | 'json' = 'json'): Promise<Blob> => {
+  try {
+    console.log(`[exportUsers] Making API call to export users in ${format} format`);
+    
+    // For file downloads, we might need to use fetch directly if apiFetch processes responses
+    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+    const response = await fetch(`${API_BASE_URL}/admin/users/export?format=${format}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+
+    return await response.blob();
+
+  } catch (error) {
+    console.error('Failed to export users:', error);
+    throw error;
+  }
+};
+
+// Utility functions for specific admin actions
+export const addCoinsToUser = async (userId: string, amount: number): Promise<User> => {
+  return updateUserCurrency(userId, { coins: amount });
+};
+
+export const addTONToUser = async (userId: string, amount: number): Promise<User> => {
+  return updateUserCurrency(userId, { ton: amount });
+};
+
+export const addSpinsToUser = async (userId: string, amount: number): Promise<User> => {
+  return updateUserCurrency(userId, { spins: amount });
+};
+
+export const resetUserProgress = async (userId: string, game: 'space_defender' | 'street_racing' | 'all'): Promise<User> => {
+  const resetData: any = {};
+
+  if (game === 'space_defender' || game === 'all') {
+    resetData.space_defender_progress = { "weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1 };
+  }
+
+  if (game === 'street_racing' || game === 'all') {
+    resetData.street_racing_progress = {
+      "currentCar": 1,
+      "unlockedCars": [1],
+      "carUpgrades": {},
+      "careerPoints": 0,
+      "adProgress": { "engine": 0, "tires": 0, "nitro": 0 }
+    };
+  }
+
+  return updateGameProgress(userId, resetData);
+};
 
 
 
@@ -610,29 +898,65 @@ export const executeWithdrawal = async (amountInTon: number): Promise<{ success:
 
 
 //here all the magic 
-export const depositAdCredit = async (amount: number): Promise<{ success: boolean; user: User }> => {
-    // await simulateDelay(1000);
+// export const depositAdCredit = async (amount: number): Promise<{ success: boolean; user: User }> => {
+//     // await simulateDelay(1000);
 
-    const res = await getCurrentUserAPI();
-        if (!res.success || !res.user) {
-            throw new Error(res.message || "Failed to fetch user");
-        }
+//     const res = await getCurrentUserAPI();
+//         if (!res.success || !res.user) {
+//             throw new Error(res.message || "Failed to fetch user");
+//         }
 
-    // res.user.ad_credit += amount;
-    const updatedUser = { ...res.user, ad_credit: res.user.ad_credit + amount };
+//     // res.user.ad_credit += amount;
+
+//     const updatedUser = { ...res.user, ad_credit: res.user.ad_credit + amount };
 
     
-    transactions.unshift({
-        id: `d${Date.now()}`,
-        type: 'Deposit',
-        amount: amount,
-        currency: 'TON',
-        date: new Date().toISOString().split('T')[0],
-        status: 'Completed'
-    });
-    return { success: true, user: { ...updatedUser } };
-};
+//     transactions.unshift({
+//         id: `d${Date.now()}`,
+//         type: 'Deposit',
+//         amount: amount,
+//         currency: 'TON',
+//         date: new Date().toISOString().split('T')[0],
+//         status: 'Completed'
+//     });
+//     return { success: true, user: { ...updatedUser } };
+// };
 
+export const depositAdCredit = async (
+  amount: number
+): Promise<{ success: boolean; user: User }> => {
+  // Step 1: Get the current user
+  const res = await getCurrentUserAPI();
+  if (!res.success || !res.user) {
+    throw new Error(res.message || 'Failed to fetch user');
+  }
+
+  const userId = res.user.id;
+  const newAdCredit = res.user.ad_credit + amount;
+
+  // Step 2: Make PUT request to update ad_credit using apiFetch
+  const updatedUser = await apiFetch<User>(`/admin/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ad_credit: newAdCredit,
+    }),
+  });
+
+  // Step 3: Update local transaction history
+  transactions.unshift({
+    id: `d${Date.now()}`,
+    type: 'Deposit',
+    amount: amount,
+    currency: 'TON',
+    date: new Date().toISOString().split('T')[0],
+    status: 'Completed',
+  });
+
+  return {
+    success: true,
+    user: updatedUser,
+  };
+};
 
 
 
@@ -763,6 +1087,58 @@ export const claimReferralEarnings = async (): Promise<{ success: boolean; user:
     return { success: false, user: null };
 }
 
+
+export const createAdminTask = async (task: Omit<Task, 'id' | 'icon'>): Promise<{ success: boolean, task?: Task }> => {
+    await simulateDelay();
+    const newTask: Task = {
+        ...task,
+        id: `task-${Date.now()}`,
+        icon: ICONS.tasks, // Generic icon for admin-added tasks
+    };
+
+    switch (task.category) {
+        case 'Daily':
+            dailyTasks.push({ ...newTask, mandatory: false });
+            break;
+        case 'Game':
+             gameTasks.push({
+                id: newTask.id,
+                link: 'https://t.me/example_game_bot',
+                status: 'Active',
+                completions: 0,
+                goal: 1, // Simplified
+                cost: 0.1, // Simplified
+                category: 'Game'
+            });
+            break;
+        case 'Social':
+            socialTasks.push({
+                id: newTask.id,
+                link: 'https://t.me/example_social_channel',
+                status: 'Active',
+                completions: 0,
+                goal: 1, // Simplified
+                cost: 0.1, // Simplified
+                category: 'Social'
+            });
+            break;
+        case 'Partner':
+             partnerCampaigns.push({
+                id: newTask.id,
+                link: 'https://t.me/example_partner_bot',
+                status: 'Active',
+                completions: 0,
+                goal: 1,
+                cost: 1,
+                requiredLevel: 5,
+                category: 'Game' // Partner tasks are a form of game task
+             });
+             break;
+        default:
+            return { success: false };
+    }
+    return { success: true, task: newTask };
+};
 
 
 export const spinWheel = async (): Promise<{ success: boolean; prize: { type: string; value: number; label: string; }; user: User }> => {
@@ -919,20 +1295,20 @@ export const fetchDashboardStats = async () => {
     return { totalUsers, totalCoins, totalWithdrawals, tasksCompleted };
 };
 
-export const fetchAllUsers = async (): Promise<User[]> => {
-    await simulateDelay();
-    return [...users];
-};
+// export const fetchAllUsers = async (): Promise<User[]> => {
+//     await simulateDelay();
+//     return [...users];
+// };
 
-export const updateUser = async (userId: number, data: Partial<User>): Promise<{ success: boolean, user?: User }> => {
-    await simulateDelay();
-    const userIndex = users.findIndex(u => u.id === userId);
-    if (userIndex !== -1) {
-        users[userIndex] = { ...users[userIndex], ...data };
-        return { success: true, user: users[userIndex] };
-    }
-    return { success: false };
-};
+// export const updateUser = async (userId: number, data: Partial<User>): Promise<{ success: boolean, user?: User }> => {
+//     await simulateDelay();
+//     const userIndex = users.findIndex(u => u.id === userId);
+//     if (userIndex !== -1) {
+//         users[userIndex] = { ...users[userIndex], ...data };
+//         return { success: true, user: users[userIndex] };
+//     }
+//     return { success: false };
+// };
 
 export const fetchAllPromoCodes = async (): Promise<PromoCode[]> => {
     await simulateDelay();

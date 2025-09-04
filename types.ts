@@ -26,12 +26,28 @@ export interface StreetRacingProgress {
 }
 
 
+// export interface User {
+//   id: number;
+//   name: string;
+//   coins: number;
+//   ton: number;
+//   referralEarnings: number;
+//   spins: number;
+//   ad_credit: number;
+//   adsWatchedToday: number;
+//   tasksCompletedTodayForSpin: number;
+//   friendsInvitedTodayForSpin: number;
+//   spaceDefenderProgress: SpaceDefenderProgress;
+//   streetRacingProgress: StreetRacingProgress;
+//   banned?: boolean;
+// }
+
 export interface User {
   id: number;
   name: string;
   coins: number;
   ton: number;
-  referralEarnings: number;
+  referral_earnings: number;   // snake_case (backend sends this)
   spins: number;
   ad_credit: number;
   adsWatchedToday: number;
@@ -39,8 +55,11 @@ export interface User {
   friendsInvitedTodayForSpin: number;
   spaceDefenderProgress: SpaceDefenderProgress;
   streetRacingProgress: StreetRacingProgress;
-  banned?: boolean;
+  banned: boolean;
+  friends: number[];  // backend returns list of friend IDs
 }
+
+
 
 export interface Task {
   id:string;
@@ -67,10 +86,12 @@ export interface DailyTask {
   link: string;
   status: string;
   completions: number;
-  ad_network_id?: string;
+  ad_network_id?: number;
   created_at?: string;
   updated_at?: string;
+  task_type: string; // ✅ fixed to camelCase
 }
+
 
 
 export interface GameTask extends Task {}

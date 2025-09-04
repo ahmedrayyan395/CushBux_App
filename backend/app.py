@@ -1,6 +1,8 @@
 # models.py
+import csv
 from decimal import Decimal
 import enum
+from io import StringIO
 import os
 # models.py
 import jwt
@@ -11,7 +13,7 @@ from flask_sqlalchemy import SQLAlchemy
 import datetime
 import json
 from urllib.parse import parse_qs, unquote, urlparse
-from flask import Blueprint, Flask, request, jsonify, session
+from flask import Blueprint, Flask, Response, request, jsonify, session
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -30,12 +32,19 @@ load_dotenv()
 app = Flask(__name__)
 # CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 # CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
-CORS(app, 
-     origins=["http://localhost:3000"],
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
-
+CORS(
+    app,
+    origins=[
+        "https://bot.cashubux.com",
+        "https://admin.cashubux.com",
+        "http://localhost:3000",  # For local development
+        "http://localhost:5173"   # For Vite development server
+    ],
+    supports_credentials=True,
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    expose_headers=["Content-Type", "Authorization", "X-Requested-With"]
+)
 app.secret_key = 'replace-this-with-your-own-very-secret-key'
 # Add JWT secret to your config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
@@ -72,7 +81,7 @@ def seed_users():
 
     users = [
         User(
-            id=4,   # Telegram ID
+            id=2,   # Telegram ID
             name="Alice",
             coins=50000000,
             ton=1.25,
@@ -266,6 +275,9 @@ class DailyTask(db.Model):
     status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
     completions = db.Column(db.Integer, default=0)
 
+    # ✅ New column: task_type
+    task_type = db.Column(db.String, default="general", nullable=False)
+
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
 
@@ -287,6 +299,7 @@ class DailyTask(db.Model):
             "link": self.link,
             "status": self.status.value if self.status else None,
             "completions": self.completions,
+            "taskType": self.task_type,  # ✅ expose as camelCase
             "ad_network_id": self.ad_network_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
@@ -615,14 +628,14 @@ def auth_with_telegram():
         return jsonify({"error": "initData is required"}), 400
 
     # Validate the initData
-    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-    if not bot_token:
-        return jsonify({"error": "Server configuration error"}), 500
+    # bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    # if not bot_token:
+    #     return jsonify({"error": "Server configuration error"}), 500
 
-    is_valid = validate_telegram_init_data_simple(init_data_str, bot_token)
+    # is_valid = validate_telegram_init_data_simple(init_data_str, bot_token)
     
-    if not is_valid:
-        return jsonify({"error": "Invalid authentication data"}), 401
+    # if not is_valid:
+    #     return jsonify({"error": "Invalid authentication data"}), 401
 
     # Use the same parsing method for consistency
     parsed_data = parse_qs(init_data_str)
@@ -1182,6 +1195,7 @@ def get_task(task_id):
     return jsonify(task.to_dict()), 200
 
 # CREATE new task
+
 @app.route("/daily-tasks", methods=["POST"])
 def create_task():
     data = request.get_json()
@@ -1194,6 +1208,7 @@ def create_task():
         reward=data["reward"],
         link=data["link"],
         category=data.get("category", "Daily"),
+        task_type=data.get("task_type", "general"),  # ✅ new field
         status=CampaignStatus(data.get("status", "Active")),
         ad_network_id=data.get("ad_network_id"),
     )
@@ -1201,7 +1216,11 @@ def create_task():
     db.session.add(new_task)
     db.session.commit()
 
-    return jsonify((new_task).to_dict()), 201
+    return jsonify(new_task.to_dict()), 201
+
+
+
+
 
 
 
@@ -1242,6 +1261,7 @@ def update_daily_task_status(task_id):
 
 # Add these endpoints to your Flask app
 
+# Update the start_daily_task endpoint to handle different task types
 @app.route("/daily-tasks/start", methods=["POST"])
 @jwt_required
 def start_daily_task():
@@ -1285,7 +1305,8 @@ def start_daily_task():
     if existing_start:
         return jsonify({"success": True, "message": "Task already started", "status": "started"})
 
-    # Insert new start record
+    # For ad script tasks, we don't need to open a window, just mark as started
+    # For other tasks, the frontend will handle opening the appropriate window
     db.session.execute(user_daily_task_completions.insert().values(
         user_id=user_id,
         task_id=task_id,
@@ -1300,6 +1321,7 @@ def start_daily_task():
         "status": "new"
     })
 
+# Update the claim_daily_task endpoint to handle verification for different task types
 @app.route("/daily-tasks/claim", methods=["POST"])
 @jwt_required
 def claim_daily_task():
@@ -1331,6 +1353,13 @@ def claim_daily_task():
 
     if existing_record.claimed:
         return jsonify({"success": False, "message": "Task already claimed"}), 400
+
+    # For Telegram tasks, we might want to verify subscription/participation
+    # This would require additional integration with Telegram API
+    if task.task_type in ['telegram_channel', 'telegram_bot']:
+        # Here you would add verification logic using Telegram API
+        # For now, we'll just mark as completed
+        pass
 
     # Update to mark as completed and claimed
     db.session.execute(
@@ -1364,6 +1393,7 @@ def claim_daily_task():
         "user": user.to_dict(),
         "reward": task.reward
     })
+
 
 @app.route("/user/daily-tasks/status")
 @jwt_required

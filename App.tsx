@@ -79,8 +79,8 @@ const App: React.FC = () => {
   //   }
   // }, []);
 
-    const IS_DEV_MODE = true;
-    const DEV_USER_ID = 4; // The ID of the user from your database you want to simulate.
+    const IS_DEV_MODE = false;
+    const DEV_USER_ID = 2; // The ID of the user from your database you want to simulate.
 
 
 
@@ -223,7 +223,7 @@ const App: React.FC = () => {
                     </Route>
                 </Route>
 
-                {/* User Routes */}
+                User Routes
                 <Route path="/new-task" element={<NewTaskPage user={user} setUser={handleSetUser} />} />
                 <Route path="/new-partner-task" element={<NewPartnerTaskPage user={user} setUser={handleSetUser} />} />
                 <Route path="/spin-wheel" element={<SpinWheelPage user={user} setUser={handleSetUser} />} />
@@ -237,6 +237,9 @@ const App: React.FC = () => {
                     <Route path="/friends" element={<FriendsPage user={user} setUser={handleSetUser} />} />
                     <Route path="/withdraw" element={<WithdrawPage user={user} setUser={handleSetUser} />} />
                 </Route>
+
+
+                
             </Routes>
         </div>
     </TonConnectUIProvider>

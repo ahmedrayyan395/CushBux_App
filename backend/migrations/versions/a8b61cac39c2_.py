@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 432a4fbe078d
+Revision ID: a8b61cac39c2
 Revises: 
-Create Date: 2025-08-29 22:15:02.784397
+Create Date: 2025-09-04 03:59:57.499909
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '432a4fbe078d'
+revision = 'a8b61cac39c2'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -70,7 +70,6 @@ def upgrade():
     sa.Column('space_defender_progress', sa.JSON(), nullable=False),
     sa.Column('street_racing_progress', sa.JSON(), nullable=False),
     sa.Column('banned', sa.Boolean(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('daily_tasks',
@@ -82,6 +81,7 @@ def upgrade():
     sa.Column('link', sa.String(), nullable=False),
     sa.Column('status', sa.Enum('ACTIVE', 'PAUSED', 'COMPLETED', name='campaignstatus'), nullable=True),
     sa.Column('completions', sa.Integer(), nullable=True),
+    sa.Column('task_type', sa.String(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['ad_network_id'], ['ad_network.id'], ),

@@ -238,9 +238,6 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
       if (isProcessing || !formIsValid || !selectedTier || !canAfford) return;
       
       setIsProcessing(true);
-
-      
-
       try {
 
         let category;

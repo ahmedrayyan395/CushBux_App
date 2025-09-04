@@ -19,6 +19,16 @@ export default defineConfig(({ mode }) => {
             ],
             // Optionally, you can add other server settings like port, cors, etc.
             port: 3000, // Change to your desired port
+        },
+         build: {
+            chunkSizeWarningLimit: 1000, // raise warning threshold to 1000kB
+            rollupOptions: {
+                onwarn(warning, warn) {
+                    if (warning.code === 'MODULE_LEVEL_DIRECTIVE') return;
+                    warn(warning);
+                }
+            }
         }
     };
 });
+

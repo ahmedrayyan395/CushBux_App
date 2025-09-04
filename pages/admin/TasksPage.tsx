@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createDailyTask, fetchDailyTasks, deleteDailyTask, updateDailyTaskStatus } from '../../services/api';
 import type { DailyTask } from '../../types';
+export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
+
 
 const TasksPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -33,34 +35,39 @@ const TasksPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setFeedback(null);
+  
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setFeedback(null);
 
-    try {
-      const result = await createDailyTask({
-        title: formData.title,
-        reward: parseInt(formData.reward, 10),
-        link: formData.link,
-        ad_network_id: formData.ad_network_id ? parseInt(formData.ad_network_id, 10) : null,
-        category: 'Daily',
-      });
+  try {
+    const result = await createDailyTask({
+      title: formData.title,
+      reward: parseInt(formData.reward, 10),
+      link: formData.link,
+      ad_network_id: formData.ad_network_id ? parseInt(formData.ad_network_id, 10) : null,
+      category: 'Daily',
+      task_type: formData.taskType || "general", // ✅ new field
+    });
 
-      if ((result as any).success !== false) {
-        setFeedback({ message: 'Daily Task created successfully!', isError: false });
-        setFormData({ title: '', reward: '', link: '', ad_network_id: '', category: 'Daily' });
-        // Reload the task list
-        await loadDailyTasks();
-      } else {
-        setFeedback({ message: 'Failed to create task.', isError: true });
-      }
-    } catch (error) {
-      setFeedback({ message: 'An error occurred.', isError: true });
-    } finally {
-      setIsLoading(false);
+    if ((result as any).success !== false) {
+      setFeedback({ message: 'Daily Task created successfully!', isError: false });
+      setFormData({ title: '', reward: '', link: '', ad_network_id: '', category: 'Daily', taskType: '' });
+      await loadDailyTasks();
+    } else {
+      setFeedback({ message: 'Failed to create task.', isError: true });
     }
-  };
+  } catch (error) {
+    setFeedback({ message: 'An error occurred.', isError: true });
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
+
+
 
   const handleDeleteTask = async (taskId: number) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
@@ -114,6 +121,16 @@ const TasksPage: React.FC = () => {
     });
   };
 
+
+
+  const TASK_TYPES = [
+  { value: "AD", label: "AD" },
+  { value: "CHANNEL", label: "CHANNEL" },
+  { value: "BOT", label: "Bot" },
+];
+
+
+
   return (
     <div className="space-y-8">
       <h1 className="text-4xl font-bold text-white mb-8">Daily Tasks Management</h1>
@@ -135,6 +152,27 @@ const TasksPage: React.FC = () => {
                 placeholder="e.g., Watch a video"
               />
             </div>
+
+            <div>
+  <label htmlFor="taskType" className="block text-sm font-medium text-slate-300 mb-2">
+    Task Type
+  </label>
+  <select
+    id="taskType"
+    required
+    value={formData.taskType}
+    onChange={e => setFormData({ ...formData, taskType: e.target.value })}
+    className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
+  >
+    <option value="" disabled>Select a type</option>
+    {TASK_TYPES.map(type => (
+      <option key={type.value} value={type.value}>
+        {type.label}
+      </option>
+    ))}
+  </select>
+</div>
+
 
             <div>
               <label htmlFor="reward" className="block text-sm font-medium text-slate-300 mb-2">Coin Reward</label>
