@@ -11,6 +11,8 @@ const TasksPage: React.FC = () => {
     link: '',
     ad_network_id: '',
     category: 'Daily' as 'Daily' | 'Game' | 'Social' | 'Partner',
+    taskType: '', // Add this line with empty string as default
+
   });
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,7 +50,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       link: formData.link,
       ad_network_id: formData.ad_network_id ? parseInt(formData.ad_network_id, 10) : null,
       category: 'Daily',
-      task_type: formData.taskType || "general", // ✅ new field
+      task_type: formData.taskType || "AD", // ✅ new field
     });
 
     if ((result as any).success !== false) {
@@ -154,24 +156,24 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div>
-  <label htmlFor="taskType" className="block text-sm font-medium text-slate-300 mb-2">
-    Task Type
-  </label>
-  <select
-    id="taskType"
-    required
-    value={formData.taskType}
-    onChange={e => setFormData({ ...formData, taskType: e.target.value })}
-    className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
-  >
-    <option value="" disabled>Select a type</option>
-    {TASK_TYPES.map(type => (
-      <option key={type.value} value={type.value}>
-        {type.label}
-      </option>
-    ))}
-  </select>
-</div>
+            <label htmlFor="taskType" className="block text-sm font-medium text-slate-300 mb-2">
+              Task Type
+            </label>
+            <select
+  id="taskType"
+  required
+  value={formData.taskType || ''} // Handle undefined case
+  onChange={e => setFormData({ ...formData, taskType: e.target.value })}
+  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
+>
+  <option value="" disabled>Select a type</option>
+  {TASK_TYPES.map(type => (
+    <option key={type.value} value={type.value}>
+      {type.label}
+    </option>
+  ))}
+</select>
+             </div>
 
 
             <div>
@@ -192,7 +194,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               <input
                 id="link"
                 type="url"
-                required
+                
                 value={formData.link}
                 onChange={e => setFormData({ ...formData, link: e.target.value })}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"

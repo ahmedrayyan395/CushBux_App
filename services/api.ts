@@ -34,8 +34,9 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'https://e5443511a470.ngrok-free.app';
 
 
 // const API_BASE_URL = 'https://b288ef9b791f.ngrok-free.app';
@@ -113,6 +114,93 @@ const handleUnauthorized = async (): Promise<boolean> => {
 
 
 // Main API fetch function with JWT support
+// export const apiFetch = async <T = any>(
+//   endpoint: string,
+//   options: RequestInit = {},
+//   retry = true
+// ): Promise<T> => {
+//   const headers: HeadersInit = {
+//     'Content-Type': 'application/json',
+//     ...options.headers,
+//   };
+
+//   // Add JWT token if available (for regular users)
+//   const token = getAuthToken();
+//   if (token) {
+//     headers['Authorization'] = `Bearer ${token}`;
+//     console.log(`[apiFetch] Using user token for ${endpoint}`);
+//   }
+
+//   // Add admin token if available (for admin routes)
+//   const adminToken = getAdminToken();
+//   if (adminToken && !token) {
+//     headers['Authorization'] = `Bearer ${adminToken}`;
+//     console.log(`[apiFetch] Using admin token for ${endpoint}`);
+//   }
+
+//   console.log(`[apiFetch] Starting request: ${endpoint}`, {
+//     method: options.method || 'GET',
+//     headers,
+//     body: options.body,
+//   });
+
+
+
+//   try {
+//     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+//       ...options,
+//       headers,
+//       // credentials: 'include',
+//     });
+
+//     console.log(`[apiFetch] Received response for ${endpoint}:`, {
+//       status: response.status,
+//     });
+
+//     // Handle unauthorized responses (token expired)
+//     if (response.status === 401 && retry) {
+//       console.warn(`[apiFetch] 401 Unauthorized - trying to refresh token for ${endpoint}`);
+//       const refreshed = await handleUnauthorized();
+//       if (refreshed) {
+//         console.log(`[apiFetch] Token refreshed, retrying request to ${endpoint}`);
+//         return apiFetch(endpoint, options, false);
+//       }
+//     }
+
+//     if (response.status === 401) {
+//       clearAuthToken();
+//       clearAdminToken();
+//       window.dispatchEvent(new Event('unauthorized'));
+//       console.error(`[apiFetch] Authentication failed for ${endpoint}`);
+//       throw {
+//         status: response.status,
+//         data: { message: 'Authentication required' },
+//       };
+//     }
+
+//     if (!response.ok) {
+//       const errorData = await response.json().catch(() => ({
+//         message: response.statusText,
+//       }));
+//       console.error(`[apiFetch] Error response from ${endpoint}:`, errorData);
+//       throw { status: response.status, data: errorData };
+//     }
+
+//     if (response.status === 204) {
+//       console.log(`[apiFetch] No content (204) from ${endpoint}`);
+//       return null as T;
+//     }
+
+//     const data = await response.json();
+//     console.log(`[apiFetch] Success response from ${endpoint}:`, data);
+//     return data as T;
+
+//   } catch (error) {
+//     console.error(`[apiFetch] API Error on ${endpoint}:`, error);
+//     throw error;
+//   }
+// };
+
 export const apiFetch = async <T = any>(
   endpoint: string,
   options: RequestInit = {},
@@ -143,8 +231,6 @@ export const apiFetch = async <T = any>(
     body: options.body,
   });
 
-
-
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
@@ -154,7 +240,52 @@ export const apiFetch = async <T = any>(
 
     console.log(`[apiFetch] Received response for ${endpoint}:`, {
       status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
     });
+
+    // First, get the response as text to see what we're dealing with
+    const responseText = await response.text();
+    console.log(`[apiFetch] Raw response text (first 200 chars):`, responseText.substring(0, 200));
+
+    // Check if this is HTML instead of JSON
+    if (responseText.trim().startsWith('<!DOCTYPE') || 
+        responseText.trim().startsWith('<html') || 
+        responseText.includes('</html>')) {
+      console.error(`[apiFetch] HTML detected in response for ${endpoint}`);
+      
+      // Handle unauthorized responses (token expired) even for HTML responses
+      if (response.status === 401 && retry) {
+        console.warn(`[apiFetch] 401 Unauthorized - trying to refresh token for ${endpoint}`);
+        const refreshed = await handleUnauthorized();
+        if (refreshed) {
+          console.log(`[apiFetch] Token refreshed, retrying request to ${endpoint}`);
+          return apiFetch(endpoint, options, false);
+        }
+      }
+
+      if (response.status === 401) {
+        clearAuthToken();
+        clearAdminToken();
+        window.dispatchEvent(new Event('unauthorized'));
+        console.error(`[apiFetch] Authentication failed for ${endpoint}`);
+        throw {
+          status: response.status,
+          data: { message: 'Authentication required' },
+          html: responseText.substring(0, 200) // Include snippet for debugging
+        };
+      }
+
+      // Throw a specific error for HTML responses
+      throw {
+        status: response.status,
+        data: { 
+          message: 'Server returned HTML instead of JSON',
+          htmlSnippet: responseText.substring(0, 200)
+        },
+        isHtml: true
+      };
+    }
 
     // Handle unauthorized responses (token expired)
     if (response.status === 401 && retry) {
@@ -178,9 +309,16 @@ export const apiFetch = async <T = any>(
     }
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({
-        message: response.statusText,
-      }));
+      // Try to parse as JSON, but fallback to text
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { 
+          message: response.statusText || 'Request failed',
+          rawResponse: responseText.substring(0, 200)
+        };
+      }
       console.error(`[apiFetch] Error response from ${endpoint}:`, errorData);
       throw { status: response.status, data: errorData };
     }
@@ -190,17 +328,27 @@ export const apiFetch = async <T = any>(
       return null as T;
     }
 
-    const data = await response.json();
-    console.log(`[apiFetch] Success response from ${endpoint}:`, data);
-    return data as T;
+    // Parse the JSON response
+    try {
+      const data = JSON.parse(responseText);
+      console.log(`[apiFetch] Success response from ${endpoint}:`, data);
+      return data as T;
+    } catch (parseError) {
+      console.error(`[apiFetch] JSON parse error for ${endpoint}:`, parseError);
+      throw {
+        status: response.status,
+        data: { 
+          message: 'Invalid JSON response',
+          rawResponse: responseText.substring(0, 200)
+        }
+      };
+    }
 
   } catch (error) {
     console.error(`[apiFetch] API Error on ${endpoint}:`, error);
     throw error;
   }
 };
-
-
 
 
 
@@ -283,12 +431,30 @@ export const fetchUserCampaignsAPI = async (): Promise<(UserCampaign | PartnerCa
   });
 };
 
-export const fetchMyCreatedCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
-  return apiFetch<(UserCampaign | PartnerCampaign)[]>('/my-campaigns', {
-    method: 'GET',
+// export const fetchMyCreatedCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
+//   return apiFetch<(UserCampaign | PartnerCampaign)[]>('/my-campaigns', {
+//     method: 'GET',
+//   });
+// };
+
+export const validateSubscription = async (
+  userId: number,
+  channelUsername: string,
+  campaignId: number
+): Promise<{ 
+  success: boolean; 
+  message: string; 
+  reward?: number;
+}> => {
+  return apiFetch('/validate/subscription', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      user_id: userId, 
+      channel_username: channelUsername, 
+      campaign_id: campaignId 
+    }),
   });
 };
-
 
 export const addUserCampaignAPI = async (
   campaignData: {
@@ -297,8 +463,9 @@ export const addUserCampaignAPI = async (
     goal: number;
     cost: number;
     level?: number;
-    category?: string | null;
+    category: string;
     languages: Array<string>;
+    checkSubscription?: boolean;
   }
 ): Promise<{
   success: boolean;
@@ -312,19 +479,21 @@ export const addUserCampaignAPI = async (
     goal: campaignData.goal,
     cost: campaignData.cost,
     languages: campaignData.languages,
+    category: campaignData.category,
+    checkSubscription: campaignData.checkSubscription || false  // Added field
   };
 
   if (campaignData.level !== undefined) {
     payload.requiredLevel = campaignData.level;
   }
 
-  payload.category = campaignData.category ?? "";
-
   return apiFetch('/addusercampaigns', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 };
+
+
 
 
 
@@ -463,12 +632,16 @@ export const startDailyTask = async (
   success: boolean; 
   message: string; 
   status?: string;
+  user?: any;              // optional updated user object
+  task?: any;              // the started task (DailyTask)
+  adFunction?: string;     // ✅ which ad SDK function to call, e.g. "show_9692552"
 }> => {
   return apiFetch(`/daily-tasks/start`, {
     method: "POST",
     body: JSON.stringify({ userId, taskId }),
   });
 };
+
 
 export const claimDailyTask = async (
   userId: number,
@@ -898,65 +1071,62 @@ export const executeWithdrawal = async (amountInTon: number): Promise<{ success:
 
 
 //here all the magic 
-// export const depositAdCredit = async (amount: number): Promise<{ success: boolean; user: User }> => {
-//     // await simulateDelay(1000);
+export const depositAdCreditAPI = async (amount: number): Promise<{ success: boolean; user: User }> => {
+    try {
+        // apiFetch already returns the parsed JSON data, not a Response object
+        const data = await apiFetch<{ success: boolean; user: User }>('/api/user/deposit-ad-credit', {
+            method: 'POST',
+            body: JSON.stringify({ amount })
+        });
 
-//     const res = await getCurrentUserAPI();
-//         if (!res.success || !res.user) {
-//             throw new Error(res.message || "Failed to fetch user");
-//         }
+        console.log('Deposit API response:', data); // Debug log
 
-//     // res.user.ad_credit += amount;
+        if (!data.success) {
+            throw new Error('Deposit failed');
+        }
 
-//     const updatedUser = { ...res.user, ad_credit: res.user.ad_credit + amount };
-
-    
-//     transactions.unshift({
-//         id: `d${Date.now()}`,
-//         type: 'Deposit',
-//         amount: amount,
-//         currency: 'TON',
-//         date: new Date().toISOString().split('T')[0],
-//         status: 'Completed'
-//     });
-//     return { success: true, user: { ...updatedUser } };
-// };
-
-export const depositAdCredit = async (
-  amount: number
-): Promise<{ success: boolean; user: User }> => {
-  // Step 1: Get the current user
-  const res = await getCurrentUserAPI();
-  if (!res.success || !res.user) {
-    throw new Error(res.message || 'Failed to fetch user');
-  }
-
-  const userId = res.user.id;
-  const newAdCredit = res.user.ad_credit + amount;
-
-  // Step 2: Make PUT request to update ad_credit using apiFetch
-  const updatedUser = await apiFetch<User>(`/admin/users/${userId}`, {
-    method: 'PUT',
-    body: JSON.stringify({
-      ad_credit: newAdCredit,
-    }),
-  });
-
-  // Step 3: Update local transaction history
-  transactions.unshift({
-    id: `d${Date.now()}`,
-    type: 'Deposit',
-    amount: amount,
-    currency: 'TON',
-    date: new Date().toISOString().split('T')[0],
-    status: 'Completed',
-  });
-
-  return {
-    success: true,
-    user: updatedUser,
-  };
+        return { success: true, user: data.user };
+    } catch (error) {
+        console.error('Deposit error:', error);
+        return { success: false, user: null };
+    }
 };
+
+// export const depositAdCredit = async (
+//   amount: number
+// ): Promise<{ success: boolean; user: User }> => {
+//   // Step 1: Get the current user
+//   const res = await getCurrentUserAPI();
+//   if (!res.success || !res.user) {
+//     throw new Error(res.message || 'Failed to fetch user');
+//   }
+
+//   const userId = res.user.id;
+//   const newAdCredit = res.user.ad_credit + amount;
+
+//   // Step 2: Make PUT request to update ad_credit using apiFetch
+//   const updatedUser = await apiFetch<User>(`/admin/users/${userId}`, {
+//     method: 'PUT',
+//     body: JSON.stringify({
+//       ad_credit: newAdCredit,
+//     }),
+//   });
+
+//   // Step 3: Update local transaction history
+//   transactions.unshift({
+//     id: `d${Date.now()}`,
+//     type: 'Deposit',
+//     amount: amount,
+//     currency: 'TON',
+//     date: new Date().toISOString().split('T')[0],
+//     status: 'Completed',
+//   });
+
+//   return {
+//     success: true,
+//     user: updatedUser,
+//   };
+// };
 
 
 
@@ -981,16 +1151,16 @@ export const depositAdCredit = async (
 //   return [...dailyTasks];
 // };
 
-export const fetchGameTasks = async (): Promise<GameTask[]> => {
-  await simulateDelay();
-  // This is now mapped from the userCampaigns store for consistency
-  return gameTasks.map(c => ({
-      id: c.id,
-      icon: ICONS.game,
-      title: 'Play ' + (new URL(c.link).hostname),
-      reward: (c.cost / (c.goal || 1)) * 0.4 * CONVERSION_RATE,
-  }));
-};
+// export const fetchGameTasks = async (): Promise<GameTask[]> => {
+//   await simulateDelay();
+//   // This is now mapped from the userCampaigns store for consistency
+//   return gameTasks.map(c => ({
+//       id: c.id,
+//       icon: ICONS.game,
+//       title: 'Play ' + (new URL(c.link).hostname),
+//       reward: (c.cost / (c.goal || 1)) * 0.4 * CONVERSION_RATE,
+//   }));
+// };
 
 export const fetchQuests = async (): Promise<Quest[]> => {
   await simulateDelay();

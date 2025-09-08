@@ -298,7 +298,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
       }
     } catch (error) {
       console.error("Error starting task:", error);
-      alert("Failed to start task");
+      alert(error.data['message']);
     } finally {
       setLoadingTasks(prev => {
         const newSet = new Set(prev);
@@ -329,7 +329,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
       }
     } catch (error) {
       console.error("Error claiming task:", error);
-      alert("Failed to claim task");
+      alert(error.data['message']);
     } finally {
       setLoadingTasks(prev => {
         const newSet = new Set(prev);

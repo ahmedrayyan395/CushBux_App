@@ -30,8 +30,8 @@ from dotenv import load_dotenv
 # Initialize the SQLAlchemy extension
 load_dotenv()
 app = Flask(__name__)
-# CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
-# CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)
+
+
 CORS(
     app,
     origins=[
@@ -70,7 +70,7 @@ migrate = Migrate(app, db)
 
 
 
-from datetime import datetime
+# from datetime import datetime
 from flask.cli import with_appcontext
 import click
 
@@ -81,7 +81,7 @@ def seed_users():
 
     users = [
         User(
-            id=2,   # Telegram ID
+            id=1497001715,   # Telegram ID
             name="Alice",
             coins=50000000,
             ton=1.25,
@@ -95,36 +95,9 @@ def seed_users():
             street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
             banned=False
         ),
-        User(
-            id=5,
-            name="Bob",
-            coins=250,
-            ton=0.75,
-            referral_earnings=50000,
-            spins=3,
-            ad_credit=75.0,
-            ads_watched_today=0,
-            tasks_completed_today_for_spin=2,
-            friends_invited_today_for_spin=1,
-            space_defender_progress={"weaponLevel": 1, "shieldLevel": 2, "speedLevel": 1},
-            street_racing_progress={"currentCar": 1, "unlockedCars": [1], "carUpgrades": {}, "careerPoints": 20, "adProgress": {"engine": 0, "tires": 1, "nitro": 0}},
-            banned=False
-        ),
-        User(
-            id=6,
-            name="Charlie",
-            coins=1008888,
-            ton=0.0,
-            referral_earnings=0,
-            spins=10,
-            ad_credit=0.0,
-            ads_watched_today=1,
-            tasks_completed_today_for_spin=0,
-            friends_invited_today_for_spin=2,
-            space_defender_progress={"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 2},
-            street_racing_progress={"currentCar": 1, "unlockedCars": [1], "carUpgrades": {}, "careerPoints": 0, "adProgress": {"engine": 0, "tires": 0, "nitro": 1}},
-            banned=False
-        ),
+       
+    
+    
     ]
 
     db.session.add_all(users)
@@ -305,26 +278,23 @@ class DailyTask(db.Model):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
-
 class UserCampaign(db.Model):
     __tablename__ = 'user_campaigns'
 
     # Common fields for User and Partner campaigns
-    # id = db.Column(db.String, primary_key=True)
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # ✅ auto increments
-
-    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     creator_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
     link = db.Column(db.String, nullable=False)
     langs = db.Column(JSON, nullable=False, default=list)
-   
-
+    
     status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
     completions = db.Column(db.Integer, default=0)
-    goal = db.Column(db.Integer, nullable=False) #number of users
-    cost = db.Column(db.Numeric(12, 4), nullable=False) # how many coins claimed
+    goal = db.Column(db.Integer, nullable=False)  # number of users
+    cost = db.Column(db.Numeric(12, 4), nullable=False)  # how many coins claimed
     category = db.Column(db.Enum(TaskCategory), nullable=False)
-
+    
+    # New field for subscription validation
+    check_subscription = db.Column(db.Boolean, default=False)
     
     # Discriminator for inheritance
     type = db.Column(db.String(50)) 
@@ -344,12 +314,11 @@ class UserCampaign(db.Model):
             'status': self.status.name if self.status else None,
             'completions': self.completions,
             'goal': self.goal,
-            'cost': str(self.cost), # Convert Decimal to string for JSON
+            'cost': str(self.cost),  # Convert Decimal to string for JSON
             'category': self.category.name if self.category else None,
+            'check_subscription': self.check_subscription,  # Include the new field
             'type': self.type,
             'langs': self.langs  # The JSONB field is automatically read as a Python list
-
-
         }
 
 
@@ -654,16 +623,16 @@ def auth_with_telegram():
     except json.JSONDecodeError:
         return jsonify({"error": "Failed to decode user JSON"}), 400
 
-    telegram_id = user_data.get('id')
-    if not telegram_id:
+    id = user_data.get('id')
+    if not id:
         return jsonify({"error": "Invalid user data in initData"}), 400
 
     
     # Find or create the user
-    user = User.query.filter_by(id=telegram_id).first()
+    user = User.query.filter_by(id=id).first()
     if not user:
         user = User(
-            id=telegram_id,
+            id=id,
             name=user_data.get('username') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or "Anonymous",
             coins=0,
             ton=0.0,
@@ -708,97 +677,6 @@ def auth_with_telegram():
 
 
 
-@app.route("/addusercampaigns", methods=["POST"])
-@jwt_required  # Use this or  depending on your needs
-def create_campaign():
-    """
-    Creates either a UserCampaign or a PartnerCampaign.
-    The presence of 'requiredLevel' in the JSON body determines the type.
-    """
-
-    data = request.get_json()
-    user = current_user()
-
-    # Ensure ad_credit check
-    if user.ad_credit < Decimal(str(data['cost'])):
-        return jsonify({
-            "success": False,
-            "message": "Insufficient ad balance. Please add funds."
-        }), 400
-
-    # Deduct cost safely
-    user.ad_credit -= Decimal(str(data['cost']))
-
-    # Required fields
-    required = ['userid', 'link', 'goal', 'cost', 'languages']
-    if not all(k in data for k in required):
-        return jsonify({
-            "success": False,
-            "message": f"Missing required fields: {required}"
-        }), 400
-
-    # Check creator exists
-    creator = User.query.get(data['userid'])
-    if not creator:
-        return jsonify({
-            "success": False,
-            "message": f"Creator user with id {data['userid']} not found"
-        }), 404
-
-    # Parse category safely
-    try:
-        category = TaskCategory[data['category'].upper()]
-    except KeyError:
-        return jsonify({
-            "success": False,
-            "message": "Invalid category value"
-        }), 400
-
-    # Validate languages
-    langs = data.get('languages', [])
-    if not isinstance(langs, list):
-        return jsonify({
-            "success": False,
-            "message": "The 'languages' field must be an array of strings."
-        }), 400
-
-    # Create the right campaign type
-    if 'requiredLevel' in data:
-        new_campaign = PartnerCampaign(
-            creator_id=data['userid'],
-            link=data['link'],
-            langs=langs,
-            status="ACTIVE",
-            completions=0,
-            goal=data['goal'],
-            cost=Decimal(str(data['cost'])),
-            category=category,
-            required_level=data['requiredLevel']
-        )
-    else:
-        new_campaign = UserCampaign(
-            creator_id=data['userid'],
-            link=data['link'],
-            langs=langs,
-            status="ACTIVE",
-            completions=0,
-            goal=data['goal'],
-            cost=Decimal(str(data['cost'])),
-            category=category
-        )
-
-    db.session.add(new_campaign)
-    db.session.commit()
-
-    return jsonify({
-        "success": True,
-        "message": "Campaign created successfully",
-        "newCampaign": new_campaign.to_dict(),
-        "user": user.to_dict()
-    }), 201
-
-
-
 
 # @app.route('/usercampaigns', methods=['GET'])
 # @jwt_required  # Use this or  depending on your needs
@@ -822,6 +700,7 @@ def create_campaign():
 #     """Returns all campaigns (both User and Partner)."""
 #     campaigns = UserCampaign.query.order_by(UserCampaign.id).all()
 #     return jsonify([c.to_dict() for c in campaigns]), 200
+
 
 
 
@@ -914,6 +793,142 @@ def get_all_uncompleted_campaigns():
 
 
 
+
+
+
+@app.route("/addusercampaigns", methods=["POST"])
+@jwt_required
+def create_campaign():
+    data = request.get_json()
+    user = current_user()
+
+    # Ensure ad_credit check
+    if user.ad_credit < Decimal(str(data['cost'])):
+        return jsonify({
+            "success": False,
+            "message": "Insufficient ad balance. Please add funds."
+        }), 400
+
+    # Deduct cost safely
+    user.ad_credit -= Decimal(str(data['cost']))
+
+    # Required fields
+    required = ['userid', 'link', 'goal', 'cost', 'languages', 'category']
+    if not all(k in data for k in required):
+        return jsonify({
+            "success": False,
+            "message": f"Missing required fields: {required}"
+        }), 400
+
+    # Check creator exists
+    creator = User.query.get(data['userid'])
+    if not creator:
+        return jsonify({
+            "success": False,
+            "message": f"Creator user with id {data['userid']} not found"
+        }), 404
+
+    # Parse category safely
+    try:
+        category = TaskCategory[data['category'].upper()]
+    except KeyError:
+        return jsonify({
+            "success": False,
+            "message": "Invalid category value"
+        }), 400
+
+    # Validate languages
+    langs = data.get('languages', [])
+    if not isinstance(langs, list):
+        return jsonify({
+            "success": False,
+            "message": "The 'languages' field must be an array of strings."
+        }), 400
+
+    # Create the right campaign type with check_subscription
+    if 'requiredLevel' in data:
+        new_campaign = PartnerCampaign(
+            creator_id=data['userid'],
+            link=data['link'],
+            langs=langs,
+            status="ACTIVE",  # Changed from PENDING_VALIDATION to ACTIVE
+            completions=0,
+            goal=data['goal'],
+            cost=Decimal(str(data['cost'])),
+            category=category,
+            required_level=data['requiredLevel'],
+            check_subscription=data.get('checkSubscription', False)  # Added field
+        )
+    else:
+        new_campaign = UserCampaign(
+            creator_id=data['userid'],
+            link=data['link'],
+            langs=langs,
+            status="ACTIVE",  # Changed from PENDING_VALIDATION to ACTIVE
+            completions=0,
+            goal=data['goal'],
+            cost=Decimal(str(data['cost'])),
+            category=category,
+            check_subscription=data.get('checkSubscription', False)  # Added field
+        )
+
+    db.session.add(new_campaign)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Campaign created successfully",
+        "newCampaign": new_campaign.to_dict(),
+        "user": user.to_dict()
+    }), 201
+
+
+
+def validate_telegram_access(link, check_subscription):
+    """Validate that our bot has access to the Telegram channel/group"""
+    try:
+        # Simulate validation - in real implementation, this would call Telegram API
+        # Check if link is a valid Telegram URL
+        if not link.startswith('https://t.me/'):
+            return {"success": False, "message": "Invalid Telegram URL"}
+        
+        # Simulate checking if our bot is admin with proper permissions
+        # For demo purposes, we'll randomly succeed 80% of the time
+        import random
+        if random.random() < 0.8:
+            return {"success": True, "message": "Validation successful"}
+        else:
+            return {"success": False, "message": "Please add our validation bot as admin with view permissions"}
+    
+    except Exception as e:
+        return {"success": False, "message": f"Validation error: {str(e)}"}
+
+
+
+def validate_bot_access(link):
+    """Validate that the bot exists and is accessible"""
+    try:
+        # Simulate bot validation
+        if not link.startswith('https://t.me/'):
+            return {"success": False, "message": "Invalid bot URL"}
+        
+        # Check if bot username is valid (ends with 'bot')
+        username = link.split('/')[-1]
+        if not username.lower().endswith('bot'):
+            return {"success": False, "message": "URL should point to a Telegram bot"}
+        
+        # Simulate checking if bot is operational
+        import random
+        if random.random() < 0.9:
+            return {"success": True, "message": "Bot validation successful"}
+        else:
+            return {"success": False, "message": "Could not verify bot accessibility"}
+    
+    except Exception as e:
+        return {"success": False, "message": f"Bot validation error: {str(e)}"}
+
+
+
 @app.route("/tasks/start", methods=["POST"])
 @jwt_required
 def start_task():
@@ -929,6 +944,16 @@ def start_task():
 
     if not user or not campaign:
         return jsonify({"success": False, "message": "User or Campaign not found"}), 404
+
+    # Check if campaign is active
+   
+
+    # Check if user has Telegram connected
+    if not user.id:
+        return jsonify({
+            "success": False, 
+            "message": "Please connect your Telegram account first"
+        }), 400
 
     # Check if already completed
     existing_completion = db.session.execute(
@@ -954,7 +979,7 @@ def start_task():
     if existing_start:
         return jsonify({"success": True, "message": "Task already started", "status": "started"})
 
-    # Insert new start record
+    # NO VALIDATION AT START - JUST CREATE THE TASK RECORD
     db.session.execute(user_task_completion.insert().values(
         user_id=user_id,
         campaign_id=(task_id),
@@ -962,18 +987,12 @@ def start_task():
     ))
 
     db.session.commit()
-
-    db.session.refresh(user)
     
     return jsonify({
         "success": True, 
-        "message": "Task started", 
-        "status": "new",
-        "user": user.to_dict()  # Return updated user
+        "message": "Task started successfully", 
+        "status": "new"
     })
-
-
-
 
 @app.route("/tasks/claim", methods=["POST"])
 @jwt_required
@@ -1005,7 +1024,35 @@ def claim_task():
     if existing_record.completed_at:
         return jsonify({"success": False, "message": "Task already claimed"}), 400
 
-    # Update to mark as completed
+    # VALIDATION: Check subscription for social campaigns (ONLY AT CLAIM TIME)
+    if campaign.category == TaskCategory.SOCIAL and campaign.check_subscription:
+        # Extract channel username from link (e.g., "https://t.me/channelname" -> "channelname")
+        channel_username = campaign.link.replace('https://t.me/', '').split('?')[0]
+        
+        # Make direct Telegram API request to check membership
+        is_member = check_telegram_membership_direct(channel_username, user.id)
+        
+        if not is_member:
+            return jsonify({
+                "success": False, 
+                "message": "Please subscribe to the channel to claim rewards"
+            }), 400
+
+    # VALIDATION: Check bot start for game campaigns (ONLY AT CLAIM TIME)
+    elif campaign.category == TaskCategory.GAME:
+        # Extract bot username from link
+        bot_username = campaign.link.replace('https://t.me/', '').split('?')[0]
+        
+        # Check if user started the bot
+        bot_started = check_user_started_bot(bot_username, user.id)
+        
+        if not bot_started:
+            return jsonify({
+                "success": False, 
+                "message": "Please start the bot to claim rewards"
+            }), 400
+
+    # ONLY COMPLETE TASK IF VALIDATION PASSES
     db.session.execute(
         user_task_completion.update().where(
             (user_task_completion.c.user_id == user_id) &
@@ -1018,16 +1065,11 @@ def claim_task():
 
     # Reward user
     CONVERSION_RATE = 1000000
-
-    reward = int((campaign.cost / Decimal(campaign.goal or 1))* Decimal("0.4")* Decimal(CONVERSION_RATE))
+    reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
     user.coins += reward
-
-    print("Rward is : " )
-    print(reward )
 
     db.session.commit()
     db.session.refresh(user)
-
 
     return jsonify({
         "success": True,
@@ -1036,6 +1078,83 @@ def claim_task():
         "reward": reward
     })
 
+def check_telegram_membership_direct(channel_username: str, user_telegram_id: int) -> bool:
+    """Make direct Telegram API request to check if user is member of channel"""
+    import requests
+    import os
+    
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not bot_token:
+        print("Telegram bot token not found")
+        return False
+    
+    base_url = f"https://api.telegram.org/bot{bot_token}"
+    
+    # Try different chat ID formats
+    chat_formats = [
+        f"@{channel_username}",  # With @ prefix
+        channel_username,         # Without @ prefix
+    ]
+    
+    for chat_format in chat_formats:
+        try:
+            url = f"{base_url}/getChatMember"
+            payload = {
+                "chat_id": chat_format,
+                "user_id": user_telegram_id
+            }
+            
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result and result.get('ok'):
+                status = result['result']['status']
+                # User is member if status is not 'left' or 'kicked'
+                is_member = status not in ['left', 'kicked']
+                print(f"Telegram API: User {user_telegram_id} status in {chat_format}: {status} -> Member: {is_member}")
+                return is_member
+            else:
+                print(f"Telegram API error for {chat_format}: {result}")
+                
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 400:
+                error_data = e.response.json()
+                print(f"Telegram API 400 error for {chat_format}: {error_data.get('description', 'Unknown error')}")
+            else:
+                print(f"Telegram API HTTP error for {chat_format}: {e}")
+        except Exception as e:
+            print(f"Telegram API error for {chat_format}: {e}")
+    
+    return False
+
+def check_user_started_bot(bot_username: str, user_telegram_id: int) -> bool:
+    """
+    Check if user started the bot.
+    This requires storing bot start events in your database.
+    For now, return True as placeholder - implement your actual tracking logic.
+    """
+    # TODO: Implement actual bot start tracking
+    # This could be done by storing when users interact with your bot
+    # and checking if the user has started the specific bot
+    
+    print(f"Placeholder: Assuming user {user_telegram_id} started bot {bot_username}")
+    return True
+
+
+
+
+
+
+
+
+def check_user_started_bot(bot_username: str, user_id: int) -> bool:
+    """
+    Simple implementation - in production, you'd track bot starts in your database
+    For now, we'll use a simple approach: check if user recently interacted with bot
+    """
+    # This is a placeholder - implement your actual bot start tracking logic
+    return True
 
 
 
@@ -1062,8 +1181,6 @@ def get_user_task_status():
         }
 
     return jsonify({"success": True, "taskStatuses": status_map})
-
-
 
 
 

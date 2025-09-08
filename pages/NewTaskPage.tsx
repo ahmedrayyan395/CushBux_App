@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COMPLETION_TIERS, LANGUAGE_OPTIONS } from '../constants';
 import type { CompletionTier, LanguageOption, UserCampaign, User } from '../types';
-import { fetchUserCampaigns, depositAdCredit, fetchUserCampaignsAPI, addUserCampaignAPI } from '../services/api';
+import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 
@@ -42,9 +42,7 @@ const MyTasksComponent: React.FC = () => {
               <ProgressBar current={campaign.completions} total={campaign.goal} />
               <div className="flex justify-between text-sm text-slate-400 mt-1">
                 <span>{campaign.completions.toLocaleString()} / {campaign.goal.toLocaleString()}</span>
-                {/* <span>Spent: {campaign.cost.toFixed(2)} TON</span> */}
                 <span> Spent: {Number(campaign.cost).toFixed(2)} TON</span>
-
               </div>
             </div>
             <div className="flex space-x-2 pt-2">
@@ -78,6 +76,49 @@ const AdBalanceDisplay: React.FC<{
     </section>
 );
 
+const ValidationInstructions: React.FC<{
+  category: string;
+  checkSubscription: boolean;
+}> = ({ category, checkSubscription }) => {
+  if (category === 'Social' && checkSubscription) {
+    return (
+      <div className="bg-blue-900/20 border border-blue-700/50 p-4 rounded-lg mt-4">
+        <h4 className="text-blue-400 font-semibold mb-2">📋 Validation Instructions for Social Tasks</h4>
+        <p className="text-blue-300 text-sm">
+          To validate user subscriptions, you need to:
+        </p>
+        <ol className="list-decimal list-inside text-blue-300 text-sm mt-2 space-y-1">
+          <li>Add our bot <span className="font-mono">@YourValidationBot</span> as an admin to your channel/group</li>
+          <li>Grant the bot permission to view members</li>
+          <li>Ensure the bot has access to see who joins/leaves</li>
+          <li>Users will only get rewards after we verify their subscription</li>
+        </ol>
+      </div>
+    );
+  } else if (category === 'Game') {
+    return (
+      <div className="bg-purple-900/20 border border-purple-700/50 p-4 rounded-lg mt-4">
+        <h4 className="text-purple-400 font-semibold mb-2">🎮 Validation Instructions for Game Tasks</h4>
+        
+  <div className="bg-purple-900/20 border border-purple-700/50 p-4 rounded-lg mt-4">
+    <h4 className="text-purple-400 font-semibold mb-2">Bot Task</h4>
+    <p className="text-purple-300 text-sm">
+      Users must start your bot using a deep link. Example:
+    </p>
+    <code className="text-purple-200 text-xs bg-purple-800 p-1 rounded block mt-1">
+      https://t.me/yourbot?start=ref_Text
+    </code>
+    <p className="text-purple-300 text-xs mt-2">
+      Make sure your bot can handle start commands.
+    </p>
+  </div>
+
+      </div>
+    );
+  }
+  
+  return null;
+};
 
 const AddTaskFormComponent: React.FC<{
     taskLink: string;
@@ -88,13 +129,14 @@ const AddTaskFormComponent: React.FC<{
     setSelectedTier: (tier: CompletionTier) => void;
     selectedLanguages: string[];
     setSelectedLanguages: (langs: string[]) => void;
-}> = ({ taskLink, setTaskLink, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedLanguages, setSelectedLanguages }) => {
+    selectedCategory: string;
+    setSelectedCategory: (category: string) => void;
+}> = ({ taskLink, setTaskLink, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedLanguages, setSelectedLanguages, selectedCategory, setSelectedCategory }) => {
 
     const handleLanguageToggle = (langId: string) => {
         const newSelection = [...selectedLanguages];
         const index = newSelection.indexOf(langId);
         if (index > -1) {
-            // Prevent removing the last selected language, English is default
             if (newSelection.length > 1 && langId !== 'en') {
                 newSelection.splice(index, 1);
             }
@@ -106,34 +148,57 @@ const AddTaskFormComponent: React.FC<{
 
     return (
         <div className="space-y-6">
+            {/* Category Selection */}
+            <section className="space-y-3">
+                <h3 className="text-base font-semibold text-slate-300">Task Category</h3>
+                <div className="flex space-x-2 bg-slate-800 p-1 rounded-xl">
+                    <button 
+                        onClick={() => setSelectedCategory('Social')} 
+                        className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${selectedCategory === 'Social' ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}
+                    >
+                        Social
+                    </button>
+                    <button 
+                        onClick={() => setSelectedCategory('Game')} 
+                        className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${selectedCategory === 'Game' ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}
+                    >
+                        Game
+                    </button>
+                </div>
+            </section>
+
             {/* Link input */}
             <section className="space-y-2">
-                <label htmlFor="task-link" className="text-base font-semibold text-slate-300">Link to app/channel/group</label>
+                <label htmlFor="task-link" className="text-base font-semibold text-slate-300">
+                    {selectedCategory === 'Social' ? 'Link to your channel/group' : 'Link to your bot'}
+                </label>
                 <input
                     id="task-link"
                     type="text"
                     value={taskLink}
                     onChange={(e) => setTaskLink(e.target.value)}
-                    placeholder="https://t.me/yourname"
+                    placeholder={selectedCategory === 'Social' ? 'https://t.me/yourchannel' : 'https://t.me/yourbot'}
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
                 />
             </section>
 
-            {/* Check subscription */}
-            <section className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-slate-300">Check subscription?</h3>
-                    <div className="w-6 h-6 flex items-center justify-center rounded-full border-2 border-slate-500 text-slate-500 font-bold text-sm">?</div>
-                </div>
-                <div className="flex space-x-2 bg-slate-800 p-1 rounded-xl">
-                    <button onClick={() => setCheckSubscription(false)} className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${!checkSubscription ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}>
-                        No
-                    </button>
-                    <button onClick={() => setCheckSubscription(true)} className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${checkSubscription ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}>
-                        Yes <span className="text-xs">(+30%)</span>
-                    </button>
-                </div>
-            </section>
+            {/* Check subscription (only for Social) */}
+            {selectedCategory === 'Social' && (
+                <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-base font-semibold text-slate-300">Check subscription?</h3>
+                        <div className="w-6 h-6 flex items-center justify-center rounded-full border-2 border-slate-500 text-slate-500 font-bold text-sm">?</div>
+                    </div>
+                    <div className="flex space-x-2 bg-slate-800 p-1 rounded-xl">
+                        <button onClick={() => setCheckSubscription(false)} className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${!checkSubscription ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}>
+                            No
+                        </button>
+                        <button onClick={() => setCheckSubscription(true)} className={`w-full p-2 rounded-lg font-semibold transition-colors duration-200 ${checkSubscription ? 'bg-green-500 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-700'}`}>
+                            Yes <span className="text-xs">(+30%)</span>
+                        </button>
+                    </div>
+                </section>
+            )}
 
             {/* Number of task completions */}
             <section className="space-y-3">
@@ -161,6 +226,9 @@ const AddTaskFormComponent: React.FC<{
                     ))}
                 </div>
             </section>
+
+            {/* Validation Instructions */}
+            <ValidationInstructions category={selectedCategory} checkSubscription={checkSubscription} />
         </div>
     );
 };
@@ -169,7 +237,6 @@ interface NewTaskPageProps {
   user: User | null;
   setUser: (user: User) => void;
 }
-
 
 const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   const navigate = useNavigate();
@@ -182,6 +249,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   const [checkSubscription, setCheckSubscription] = useState(false);
   const [selectedTier, setSelectedTier] = useState<CompletionTier | null>(COMPLETION_TIERS[0]);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Social');
   const [totalCost, setTotalCost] = useState(0);
 
   // Control State
@@ -190,9 +258,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
 
   useEffect(() => {
     if (selectedTier) {
-      
       const baseCost = selectedTier.cost;
-      const subscriptionCost = checkSubscription ? baseCost * 0.30 : 0;
+      const subscriptionCost = (selectedCategory === 'Social' && checkSubscription) ? baseCost * 0.30 : 0;
       const extraLanguages = selectedLanguages.includes('en') ? selectedLanguages.length - 1 : selectedLanguages.length;
       const languageCost = baseCost * extraLanguages * 0.15;
       
@@ -201,7 +268,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
     } else {
         setTotalCost(0);
     }
-  }, [selectedTier, checkSubscription, selectedLanguages]);
+  }, [selectedTier, checkSubscription, selectedLanguages, selectedCategory]);
   
 
   const handleAddFunds = async () => {
@@ -214,10 +281,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
       if (amountStr) {
           const amount = parseFloat(amountStr);
           if (!isNaN(amount) && amount > 0) {
-              // In a real app, this would initiate a real wallet transaction.
-              // For simulation, we just call the API directly.
               alert(`Simulating deposit of ${amount} TON. This will be reflected in your balance.`);
-              const result = await depositAdCredit(amount);
+              const result = await depositAdCreditAPI(amount);
               if (result.success) {
                   setUser(result.user);
                   alert("Deposit successful!");
@@ -239,34 +304,14 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
       
       setIsProcessing(true);
       try {
-
-        let category;
-
-        try {
-            // Try to parse the link (browser-safe way)
-            const parsed = new URL(taskLink);
-            const path = parsed.pathname.replace(/^\/+|\/+$/g, ""); // trim slashes
-
-            if (path.toLowerCase().endsWith("bot")) {
-              category = "Game";
-            } else {
-              category = "Social";
-            }
-        } catch (e) {
-            // Fallback if URL is malformed
-            category = "Social";
-        }
-
-
-
           const result = await addUserCampaignAPI({
-              userid:user.id,
+              userid: user.id,
               link: taskLink,
               goal: selectedTier.completions,
               cost: totalCost,
-              category:category,
-              languages:selectedLanguages,
-              
+              category: selectedCategory,
+              languages: selectedLanguages,
+              checkSubscription: selectedCategory === 'Social' ? checkSubscription : false
           });
 
           if (result.success && result.user) {
@@ -277,6 +322,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
               setCheckSubscription(false);
               setSelectedTier(COMPLETION_TIERS[0]);
               setSelectedLanguages(['en']);
+              setSelectedCategory('Social');
               // Switch tab and trigger refresh
               setActiveTab('my');
               setCampaignsVersion(v => v + 1);
@@ -293,11 +339,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
 
   const getButtonText = () => {
     if (isProcessing) return 'Processing...';
-    // Always show the price. The disabled state will reflect if the action is possible.
     return `Pay ${totalCost.toFixed(2)} TON`;
   };
-
-
 
   return (
     <div className="bg-slate-900 text-white min-h-screen">
@@ -343,6 +386,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
                   setSelectedTier={setSelectedTier}
                   selectedLanguages={selectedLanguages}
                   setSelectedLanguages={setSelectedLanguages}
+                  selectedCategory={selectedCategory}
+                  setSelectedCategory={setSelectedCategory}
               />
             </>
         ) : (

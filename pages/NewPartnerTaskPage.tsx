@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COMPLETION_TIERS, LANGUAGE_OPTIONS } from '../constants';
 import type { CompletionTier, LanguageOption, PartnerCampaign, User } from '../types';
-import { addPartnerTask, fetchPartnerCampaigns, depositAdCredit, addUserCampaignAPI, fetchUserCampaignsAPI } from '../services/api';
+import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampaignAPI, fetchUserCampaignsAPI } from '../services/api';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import ProgressBar from '../components/ProgressBar';
 
@@ -212,7 +212,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
           const amount = parseFloat(amountStr);
           if (!isNaN(amount) && amount > 0) {
               alert(`Simulating deposit of ${amount} TON. This will be reflected in your balance.`);
-              const result = await depositAdCredit(amount);
+              const result = await depositAdCreditAPI(amount);
               if (result.success) {
                   setUser(result.user);
                   alert("Deposit successful!");
