@@ -470,7 +470,7 @@ export const addUserCampaignAPI = async (
 ): Promise<{
   success: boolean;
   message: string;
-  newCampaign?: UserCampaign;
+  newCampaign?: UserCampaign & { webhookToken?: string; requiredLevel?: number };
   user?: User;
 }> => {
   const payload: any = {
@@ -480,7 +480,7 @@ export const addUserCampaignAPI = async (
     cost: campaignData.cost,
     languages: campaignData.languages,
     category: campaignData.category,
-    checkSubscription: campaignData.checkSubscription || false  // Added field
+    checkSubscription: campaignData.checkSubscription || false
   };
 
   if (campaignData.level !== undefined) {

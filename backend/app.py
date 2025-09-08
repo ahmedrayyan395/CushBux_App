@@ -4,6 +4,8 @@ from decimal import Decimal
 import enum
 from io import StringIO
 import os
+import secrets
+import string
 # models.py
 import jwt
 from sqlalchemy.dialects.postgresql import JSONB # Use JSONB for PostgreSQL for better performance
@@ -108,16 +110,6 @@ def seed_users():
 
 # --- Enums defined from TypeScript interfaces ---
 
-class TaskCategory(enum.Enum):
-    DAILY = 'Daily'
-    GAME = 'Game'
-    SOCIAL = 'Social'
-    PARTNER = 'Partner'
-
-class CampaignStatus(enum.Enum):
-    ACTIVE = 'Active'
-    PAUSED = 'Paused'
-    COMPLETED = 'Completed'
 
 class TransactionType(enum.Enum):
     WITHDRAWAL = 'Withdrawal'
@@ -157,13 +149,6 @@ friendships = db.Table('friendships',
 
 # --- Core Models ---
 
-user_task_completion = db.Table('user_task_completions',
-    db.Column('user_id', db.BigInteger, db.ForeignKey('users.id'), primary_key=True),
-    db.Column('campaign_id', db.BigInteger, db.ForeignKey('user_campaigns.id'), primary_key=True),
-    db.Column('started_at', db.TIMESTAMP, server_default=func.now()),  # Add this
-    db.Column('completed_at', db.TIMESTAMP)  # Keep this
-)
-# Tracks friendships (many-to-many relationship on User)
 
 
 
@@ -233,50 +218,27 @@ class User(db.Model):
             "friends": [friend.id for friend in self.friends],  # Only return friend IDs
         }
 
-class DailyTask(db.Model):
-    __tablename__ = "daily_tasks"
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title = db.Column(db.String, nullable=False)
-    reward = db.Column(db.Integer, nullable=False)
-    category = db.Column(db.String, default="Daily")
 
-    # ✅ use AdNetwork.id instead of .name
-    ad_network_id = db.Column(db.Integer, db.ForeignKey("ad_network.id"), nullable=True)
 
-    link = db.Column(db.String, nullable=False)
-    status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
-    completions = db.Column(db.Integer, default=0)
+class TaskCategory(enum.Enum):
+    DAILY = 'Daily'
+    GAME = 'Game'
+    SOCIAL = 'Social'
+    PARTNER = 'Partner'
 
-    # ✅ New column: task_type
-    task_type = db.Column(db.String, default="general", nullable=False)
+class CampaignStatus(enum.Enum):
+    ACTIVE = 'Active'
+    PAUSED = 'Paused'
+    COMPLETED = 'Completed'
 
-    created_at = db.Column(db.DateTime, default=db.func.now())
-    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
-
-    users = db.relationship(
-        "User",
-        secondary="user_daily_task_completions",
-        back_populates="daily_tasks",
-    )
-
-    # ✅ Optional relationship back to AdNetwork
-    ad_network = db.relationship("AdNetwork", backref="daily_tasks")
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "reward": self.reward,
-            "category": self.category,
-            "link": self.link,
-            "status": self.status.value if self.status else None,
-            "completions": self.completions,
-            "taskType": self.task_type,  # ✅ expose as camelCase
-            "ad_network_id": self.ad_network_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+user_task_completion = db.Table('user_task_completions',
+    db.Column('user_id', db.BigInteger, db.ForeignKey('users.id'), primary_key=True),
+    db.Column('campaign_id', db.BigInteger, db.ForeignKey('user_campaigns.id'), primary_key=True),
+    db.Column('started_at', db.TIMESTAMP, server_default=func.now()),  # Add this
+    db.Column('completed_at', db.TIMESTAMP)  # Keep this
+)
+# Tracks friendships (many-to-many relationship on User)
 
 class UserCampaign(db.Model):
     __tablename__ = 'user_campaigns'
@@ -322,6 +284,115 @@ class UserCampaign(db.Model):
         }
 
 
+
+class PartnerCampaign(UserCampaign):
+    __tablename__ = 'partner_campaigns'
+
+    id = db.Column(db.String, db.ForeignKey('user_campaigns.id'), primary_key=True)
+    required_level = db.Column(db.Integer, nullable=False)
+    webhook_token = db.Column(db.String(64), unique=True, nullable=False)  # Add this field
+
+    __mapper_args__ = {
+        'polymorphic_identity': 'partner_campaign',
+    }
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Generate unique webhook token if not provided
+        if not self.webhook_token:
+            self.webhook_token = self.generate_webhook_token()
+    
+    def generate_webhook_token(self):
+        """Generate a secure random token for webhook authentication"""
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(32))
+    
+    def to_dict(self):
+        data = super().to_dict()
+        data['requiredLevel'] = self.required_level
+        data['webhookToken'] = self.webhook_token  # Include the token
+        return data
+
+
+
+# models.py - Add these models
+class UserGameProgress(db.Model):
+    __tablename__ = 'user_game_progress'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    game_id = db.Column(db.String(100), nullable=False)  # bot username or game identifier
+    current_level = db.Column(db.Integer, default=1)
+    max_level_reached = db.Column(db.Integer, default=1)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    user = db.relationship('User', backref='game_progress')
+    
+    __table_args__ = (
+        db.Index('idx_user_game', 'user_id', 'game_id'),
+    )
+
+class LevelCompletion(db.Model):
+    __tablename__ = 'level_completions'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.BigInteger, nullable=False)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('user_campaigns.id'), nullable=False)
+    required_level = db.Column(db.Integer, nullable=False)
+    completed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    campaign = db.relationship('UserCampaign', backref='level_completions')
+
+class DailyTask(db.Model):
+    __tablename__ = "daily_tasks"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String, nullable=False)
+    reward = db.Column(db.Integer, nullable=False)
+    category = db.Column(db.String, default="Daily")
+
+    # ✅ use AdNetwork.id instead of .name
+    ad_network_id = db.Column(db.Integer, db.ForeignKey("ad_network.id"), nullable=True)
+
+    link = db.Column(db.String, nullable=False)
+    status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
+    completions = db.Column(db.Integer, default=0)
+
+    # ✅ New column: task_type
+    task_type = db.Column(db.String, default="general", nullable=False)
+
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    users = db.relationship(
+        "User",
+        secondary="user_daily_task_completions",
+        back_populates="daily_tasks",
+    )
+
+    # ✅ Optional relationship back to AdNetwork
+    ad_network = db.relationship("AdNetwork", backref="daily_tasks")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "reward": self.reward,
+            "category": self.category,
+            "link": self.link,
+            "status": self.status.value if self.status else None,
+            "completions": self.completions,
+            "taskType": self.task_type,  # ✅ expose as camelCase
+            "ad_network_id": self.ad_network_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+
+
 class Quest(db.Model):
     __tablename__ = 'quests'
     
@@ -359,21 +430,6 @@ class Transaction(db.Model):
 
 
 
-class PartnerCampaign(UserCampaign):
-    __tablename__ = 'partner_campaigns'
-
-    id = db.Column(db.String, db.ForeignKey('user_campaigns.id'), primary_key=True)
-    required_level = db.Column(db.Integer, nullable=False)
-
-    __mapper_args__ = {
-        'polymorphic_identity': 'partner_campaign',
-    }
-    def to_dict(self):
-        # Call the parent's to_dict() method to get the base fields
-        data = super().to_dict()
-        # Add the specific fields for this subclass
-        data['requiredLevel'] = self.required_level
-        return data
 
 class PromoCode(db.Model):
     __tablename__ = 'promo_codes'
@@ -846,30 +902,31 @@ def create_campaign():
         }), 400
 
     # Create the right campaign type with check_subscription
+    # Create the right campaign type
     if 'requiredLevel' in data:
         new_campaign = PartnerCampaign(
             creator_id=data['userid'],
             link=data['link'],
             langs=langs,
-            status="ACTIVE",  # Changed from PENDING_VALIDATION to ACTIVE
+            status="ACTIVE",
             completions=0,
             goal=data['goal'],
             cost=Decimal(str(data['cost'])),
             category=category,
             required_level=data['requiredLevel'],
-            check_subscription=data.get('checkSubscription', False)  # Added field
+            check_subscription=True
         )
     else:
         new_campaign = UserCampaign(
             creator_id=data['userid'],
             link=data['link'],
             langs=langs,
-            status="ACTIVE",  # Changed from PENDING_VALIDATION to ACTIVE
+            status="ACTIVE",
             completions=0,
             goal=data['goal'],
             cost=Decimal(str(data['cost'])),
             category=category,
-            check_subscription=data.get('checkSubscription', False)  # Added field
+            check_subscription=data.get('checkSubscription', False)
         )
 
     db.session.add(new_campaign)
@@ -878,10 +935,9 @@ def create_campaign():
     return jsonify({
         "success": True,
         "message": "Campaign created successfully",
-        "newCampaign": new_campaign.to_dict(),
+        "newCampaign": new_campaign.to_dict(),  # This will include the webhook token
         "user": user.to_dict()
     }), 201
-
 
 
 def validate_telegram_access(link, check_subscription):
@@ -994,6 +1050,7 @@ def start_task():
         "status": "new"
     })
 
+
 @app.route("/tasks/claim", methods=["POST"])
 @jwt_required
 def claim_task():
@@ -1030,7 +1087,7 @@ def claim_task():
         channel_username = campaign.link.replace('https://t.me/', '').split('?')[0]
         
         # Make direct Telegram API request to check membership
-        is_member = check_telegram_membership_direct(channel_username, user.id)
+        is_member = check_telegram_membership_direct(channel_username, user.telegram_id)
         
         if not is_member:
             return jsonify({
@@ -1044,12 +1101,47 @@ def claim_task():
         bot_username = campaign.link.replace('https://t.me/', '').split('?')[0]
         
         # Check if user started the bot
-        bot_started = check_user_started_bot(bot_username, user.id)
+        bot_started = check_user_started_bot(bot_username, user.telegram_id)
         
         if not bot_started:
             return jsonify({
                 "success": False, 
                 "message": "Please start the bot to claim rewards"
+            }), 400
+
+    # VALIDATION: Check level completion for partner campaigns (ONLY AT CLAIM TIME)
+    elif campaign.category == TaskCategory.PARTNER:
+        # For partner campaigns, check if user reached the required level
+        partner_campaign = PartnerCampaign.query.get(task_id)
+        if not partner_campaign:
+            return jsonify({"success": False, "message": "Invalid partner campaign"}), 400
+        
+        # Extract game ID from link
+        game_id = extract_game_id_from_link(campaign.link)
+
+        
+        # Check user's current level for this game
+        user_progress = UserGameProgress.query.filter_by(
+            user_id=user.id,
+            game_id=game_id
+        ).first()
+        
+        if not user_progress or user_progress.current_level < partner_campaign.required_level:
+            return jsonify({
+                "success": False, 
+                "message": f"Reach level {partner_campaign.required_level} in the game to claim rewards"
+            }), 400
+        
+        # Check if level completion is already recorded
+        level_completion = LevelCompletion.query.filter_by(
+            user_id=user.id,
+            campaign_id=campaign.id
+        ).first()
+        
+        if not level_completion:
+            return jsonify({
+                "success": False, 
+                "message": "Level completion not verified. Please make sure the game sent your progress."
             }), 400
 
     # ONLY COMPLETE TASK IF VALIDATION PASSES
@@ -1077,6 +1169,20 @@ def claim_task():
         "user": user.to_dict(),
         "reward": reward
     })
+
+
+
+def extract_game_id_from_link(link: str) -> str:
+    """Extract game/bot ID from various link formats"""
+    if link.startswith('https://t.me/'):
+        # Remove https://t.me/ and any query parameters
+        return link.replace('https://t.me/', '').split('?')[0]
+    elif link.startswith('@'):
+        # Remove @ prefix
+        return link[1:]
+    else:
+        # Return as is (could be bot username without @)
+        return link
 
 def check_telegram_membership_direct(channel_username: str, user_telegram_id: int) -> bool:
     """Make direct Telegram API request to check if user is member of channel"""
@@ -1128,6 +1234,7 @@ def check_telegram_membership_direct(channel_username: str, user_telegram_id: in
     
     return False
 
+
 def check_user_started_bot(bot_username: str, user_telegram_id: int) -> bool:
     """
     Check if user started the bot.
@@ -1143,9 +1250,138 @@ def check_user_started_bot(bot_username: str, user_telegram_id: int) -> bool:
 
 
 
+@app.route("/api/webhook/level-update", methods=["POST"])
+def level_update_webhook():
+    data = request.get_json()
+    
+    # Check for token authentication
+    auth_token = request.headers.get('Authorization')
+    if not auth_token or not auth_token.startswith('Bearer '):
+        return jsonify({"success": False, "message": "Authentication required"}), 401
+    
+    token = auth_token[7:]  # Remove 'Bearer ' prefix
+    
+    # Find campaign by token
+    campaign = PartnerCampaign.query.filter_by(webhook_token=token).first()
+    if not campaign:
+        return jsonify({"success": False, "message": "Invalid token"}), 401
+    
+    # Required fields
+    required_fields = ['user_id', 'current_level']
+    if not all(field in data for field in required_fields):
+        return jsonify({"success": False, "message": "Missing required fields"}), 400
+    
+    user_id = data['user_id']
+    current_level = data['current_level']
+    
+    try:
+        # Update or create user game progress
+        progress = UserGameProgress.query.filter_by(
+            user_id=user_id,
+            game_id=campaign.link  # Use campaign link as game identifier
+        ).first()
+        
+        if progress:
+            progress.current_level = current_level
+            if current_level > progress.max_level_reached:
+                progress.max_level_reached = current_level
+        else:
+            progress = UserGameProgress(
+                user_id=user_id,
+                game_id=campaign.link,
+                current_level=current_level,
+                max_level_reached=current_level
+            )
+            db.session.add(progress)
+        
+        db.session.commit()
+        
+        # Check if user completed this specific partner task
+        check_level_completion(user_id, campaign.id, current_level, campaign.required_level)
+        
+        return jsonify({
+            "success": True,
+            "message": "Level updated successfully"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Level update error: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
+
+def check_level_completion(user_id: int, campaign_id: int, current_level: int, required_level: int):
+    """Check if user completed a specific partner task"""
+    if current_level >= required_level:
+        # Check if already completed
+        existing_completion = LevelCompletion.query.filter_by(
+            user_id=user_id,
+            campaign_id=campaign_id
+        ).first()
+        
+        if not existing_completion:
+            # Record completion
+            new_completion = LevelCompletion(
+                user_id=user_id,
+                campaign_id=campaign_id,
+                required_level=required_level
+            )
+            db.session.add(new_completion)
+            db.session.commit()
 
 
 
+
+@app.route("/api/webhook-docs/<campaign_id>")
+@jwt_required
+def webhook_docs(campaign_id):
+    """Provide documentation for specific partner campaign"""
+    campaign = PartnerCampaign.query.get(campaign_id)
+    if not campaign or campaign.creator_id != current_user().id:
+        return jsonify({"success": False, "message": "Campaign not found"}), 404
+    
+    return jsonify({
+        "webhook_url": "/api/webhook/level-update",
+        "method": "POST",
+        "authentication": {
+            "type": "Bearer Token",
+            "token": campaign.webhook_token,
+            "header": "Authorization: Bearer YOUR_TOKEN_HERE"
+        },
+        "content_type": "application/json",
+        "required_fields": {
+            "user_id": "Telegram user ID",
+            "current_level": "User's current level in your game"
+        },
+        "optional_fields": {
+            "username": "Telegram username (optional)",
+            "game_data": "Additional game data (optional)"
+        },
+        "example_payload": {
+            "user_id": 123456789,
+            "current_level": 5,
+            "username": "johndoe",
+            "game_data": {"score": 1000, "achievements": ["first_win"]}
+        },
+        "response": {
+            "success": "boolean",
+            "message": "string"
+        }
+    })
+
+
+@app.route("/api/campaign/<campaign_id>/token")
+@jwt_required
+def get_campaign_token(campaign_id):
+    """Get the webhook token for a specific campaign"""
+    campaign = PartnerCampaign.query.get(campaign_id)
+    if not campaign or campaign.creator_id != current_user().id:
+        return jsonify({"success": False, "message": "Campaign not found"}), 404
+    
+    return jsonify({
+        "success": True,
+        "webhook_token": campaign.webhook_token,
+        "webhook_url": "/api/webhook/level-update"
+    })
 
 
 def check_user_started_bot(bot_username: str, user_id: int) -> bool:

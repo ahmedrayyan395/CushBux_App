@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: f032d4b196cd
+Revision ID: 8a935edf6960
 Revises: 
-Create Date: 2025-09-07 23:33:00.980996
+Create Date: 2025-09-08 09:12:20.482429
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f032d4b196cd'
+revision = '8a935edf6960'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -120,6 +120,19 @@ def upgrade():
     sa.ForeignKeyConstraint(['creator_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('user_game_progress',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('game_id', sa.String(length=100), nullable=False),
+    sa.Column('current_level', sa.Integer(), nullable=True),
+    sa.Column('max_level_reached', sa.Integer(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('user_game_progress', schema=None) as batch_op:
+        batch_op.create_index('idx_user_game', ['user_id', 'game_id'], unique=False)
+
     op.create_table('user_quest_progress',
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('quest_id', sa.String(), nullable=False),
@@ -128,11 +141,22 @@ def upgrade():
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('user_id', 'quest_id')
     )
+    op.create_table('level_completions',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('campaign_id', sa.Integer(), nullable=False),
+    sa.Column('required_level', sa.Integer(), nullable=False),
+    sa.Column('completed_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['campaign_id'], ['user_campaigns.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
     op.create_table('partner_campaigns',
     sa.Column('id', sa.String(), nullable=False),
     sa.Column('required_level', sa.Integer(), nullable=False),
+    sa.Column('webhook_token', sa.String(length=64), nullable=False),
     sa.ForeignKeyConstraint(['id'], ['user_campaigns.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('webhook_token')
     )
     op.create_table('user_daily_task_completions',
     sa.Column('user_id', sa.BigInteger(), nullable=False),
@@ -161,7 +185,12 @@ def downgrade():
     op.drop_table('user_task_completions')
     op.drop_table('user_daily_task_completions')
     op.drop_table('partner_campaigns')
+    op.drop_table('level_completions')
     op.drop_table('user_quest_progress')
+    with op.batch_alter_table('user_game_progress', schema=None) as batch_op:
+        batch_op.drop_index('idx_user_game')
+
+    op.drop_table('user_game_progress')
     op.drop_table('user_campaigns')
     op.drop_table('transactions')
     op.drop_table('friendships')

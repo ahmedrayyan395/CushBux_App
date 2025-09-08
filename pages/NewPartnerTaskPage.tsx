@@ -6,7 +6,6 @@ import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampa
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import ProgressBar from '../components/ProgressBar';
 
-
 const MyPartnerTasksComponent: React.FC = () => {
   const [campaigns, setCampaigns] = useState<PartnerCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +38,21 @@ const MyPartnerTasksComponent: React.FC = () => {
               <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
               <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>{campaign.status}</span>
             </div>
-             <div className="text-sm text-slate-300">Required Level: <span className="font-bold text-white">{campaign.requiredLevel}</span></div>
+            <div className="text-sm text-slate-300">Required Level: <span className="font-bold text-white">{campaign.requiredLevel}</span></div>
+            
+            {/* Webhook Token Display */}
+            {campaign.webhookToken && (
+              <div className="bg-blue-900/20 p-3 rounded">
+                <p className="text-blue-300 text-xs font-semibold mb-1">Webhook Token:</p>
+                <code className="text-blue-200 text-xs break-all bg-blue-800/50 p-1 rounded">
+                  {campaign.webhookToken}
+                </code>
+                <p className="text-blue-300 text-xs mt-1">
+                  Use this token to authenticate level updates from your game
+                </p>
+              </div>
+            )}
+
             <div>
               <ProgressBar current={campaign.completions} total={campaign.goal} />
               <div className="flex justify-between text-sm text-slate-400 mt-1">
@@ -57,7 +70,6 @@ const MyPartnerTasksComponent: React.FC = () => {
     </div>
   );
 };
-
 
 const AdBalanceDisplay: React.FC<{
     user: User | null;
@@ -79,7 +91,33 @@ const AdBalanceDisplay: React.FC<{
     </section>
 );
 
-
+const PartnerInstructions: React.FC = () => (
+  <div className="bg-blue-900/20 border border-blue-700/50 p-4 rounded-lg mt-4">
+    <h4 className="text-blue-400 font-semibold mb-2">🎯 Level Validation Setup</h4>
+    <p className="text-blue-300 text-sm mb-3">
+      For level validation to work, your game must send progress updates to our webhook:
+    </p>
+    
+    <div className="bg-blue-800/50 p-2 rounded mb-3">
+      <code className="text-blue-200 text-sm break-all">
+        POST /api/webhook/level-update
+      </code>
+    </div>
+    
+    <ol className="list-decimal list-inside text-blue-300 text-sm space-y-2">
+      <li>Include the webhook token in Authorization header: <code className="bg-blue-800 px-1 rounded">Bearer YOUR_TOKEN</code></li>
+      <li>Send JSON with: <code className="bg-blue-800 px-1 rounded">user_id</code> and <code className="bg-blue-800 px-1 rounded">current_level</code></li>
+      <li>We'll automatically track user progress</li>
+      <li>Users can claim rewards when they reach your required level</li>
+    </ol>
+    
+    <div className="mt-3 p-2 bg-blue-800/30 rounded">
+      <p className="text-blue-200 text-xs">
+        🔗 <strong>Webhook required</strong> for level validation to work
+      </p>
+    </div>
+  </div>
+);
 
 const AddPartnerTaskFormComponent: React.FC<{
     taskLink: string;
@@ -109,13 +147,13 @@ const AddPartnerTaskFormComponent: React.FC<{
         <div className="space-y-6">
             {/* Link input */}
             <section className="space-y-2">
-                <label htmlFor="task-link" className="text-base font-semibold text-slate-300">Link to bot</label>
+                <label htmlFor="task-link" className="text-base font-semibold text-slate-300">Link to your game/bot</label>
                 <input
                     id="task-link"
                     type="text"
                     value={taskLink}
                     onChange={(e) => setTaskLink(e.target.value)}
-                    placeholder="https://t.me/yourbot"
+                    placeholder="https://t.me/yourgamebot"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
                 />
             </section>
@@ -155,16 +193,17 @@ const AddPartnerTaskFormComponent: React.FC<{
                     ))}
                 </div>
             </section>
+
+            {/* Webhook Instructions */}
+            <PartnerInstructions />
         </div>
     );
 };
-
 
 interface NewPartnerTaskPageProps {
   user: User | null;
   setUser: (user: User) => void;
 }
-
 
 const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }) => {
   const navigate = useNavigate();
@@ -200,7 +239,6 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
     }
   }, [selectedTier, selectedLevel, selectedLanguages]);
 
-
   const handleAddFunds = async () => {
       if (!wallet) {
           tonConnectUI.openModal();
@@ -225,7 +263,6 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
       }
   };
 
-
   const adBalance = user?.ad_credit || 0;
   const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
   const canAfford = adBalance >= totalCost;
@@ -237,20 +274,19 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
       setIsProcessing(true);
       try {
           const result = await addUserCampaignAPI({
-             userid:user.id,
-              link: taskLink,
-              goal: selectedTier.completions,
-              cost: totalCost,
-              level: selectedLevel,
-              category:category,
-              languages:selectedLanguages,
-
+             userid: user.id,
+             link: taskLink,
+             goal: selectedTier.completions,
+             cost: totalCost,
+             level: selectedLevel,
+             category: category,
+             languages: selectedLanguages,
           });
 
           if (result.success && result.user) {
-              alert(result.message);
+              alert("Partner task created successfully! Check 'My Tasks' for your webhook token.");
               setUser(result.user);
-               // Reset form
+              // Reset form
               setTaskLink('');
               setSelectedLevel(1);
               setSelectedTier(COMPLETION_TIERS[0]);
@@ -271,7 +307,6 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
   
   const getButtonText = () => {
     if (isProcessing) return 'Processing...';
-    // Always show the price. The disabled state indicates if the user can proceed.
     return `Pay ${totalCost.toFixed(2)} TON`;
   };
 
@@ -332,7 +367,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
             {getButtonText()}
           </button>
         </footer>
-       )}
+      )}
     </div>
   );
 };
