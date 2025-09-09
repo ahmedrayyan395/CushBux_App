@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 8a935edf6960
+Revision ID: a2eb16514440
 Revises: 
-Create Date: 2025-09-08 09:12:20.482429
+Create Date: 2025-09-09 09:38:46.004171
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '8a935edf6960'
+revision = 'a2eb16514440'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -70,7 +70,13 @@ def upgrade():
     sa.Column('space_defender_progress', sa.JSON(), nullable=False),
     sa.Column('street_racing_progress', sa.JSON(), nullable=False),
     sa.Column('banned', sa.Boolean(), nullable=True),
-    sa.PrimaryKeyConstraint('id')
+    sa.Column('referral_code', sa.String(length=10), nullable=True),
+    sa.Column('referred_by', sa.BigInteger(), nullable=True),
+    sa.Column('referral_count', sa.Integer(), nullable=True),
+    sa.Column('total_referral_earnings', sa.BigInteger(), nullable=True),
+    sa.ForeignKeyConstraint(['referred_by'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('referral_code')
     )
     op.create_table('daily_tasks',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -93,6 +99,17 @@ def upgrade():
     sa.ForeignKeyConstraint(['friend_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('user_id', 'friend_id')
+    )
+    op.create_table('referrals',
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('referrer_id', sa.BigInteger(), nullable=False),
+    sa.Column('referred_id', sa.BigInteger(), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('earnings_generated', sa.BigInteger(), nullable=True),
+    sa.ForeignKeyConstraint(['referred_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['referrer_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('referrer_id', 'referred_id', name='unique_referral')
     )
     op.create_table('transactions',
     sa.Column('id', sa.String(), nullable=False),
@@ -193,6 +210,7 @@ def downgrade():
     op.drop_table('user_game_progress')
     op.drop_table('user_campaigns')
     op.drop_table('transactions')
+    op.drop_table('referrals')
     op.drop_table('friendships')
     op.drop_table('daily_tasks')
     op.drop_table('users')

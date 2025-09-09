@@ -186,6 +186,8 @@ class User(db.Model):
 
     banned = db.Column(db.Boolean, default=False)
 
+
+
      # ✅ Add this:
     daily_tasks = db.relationship(
         "DailyTask",
@@ -199,7 +201,38 @@ class User(db.Model):
                               primaryjoin=(id == friendships.c.user_id),
                               secondaryjoin=(id == friendships.c.friend_id),
                               backref="friend_of")
+
+
+
+    # Referral tracking
+    referral_code = db.Column(db.String(10), unique=True, nullable=True)
+    referred_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
+    referral_count = db.Column(db.Integer, default=0)
+    total_referral_earnings = db.Column(db.BigInteger, default=0)
     
+    # Relationships
+    referrals = db.relationship('User', 
+                               foreign_keys=[referred_by],
+                               backref=db.backref('referrer', remote_side=[id]))
+
+
+
+
+    def generate_referral_code(self):
+        """Generate a unique referral code"""
+        import secrets
+        import string
+        
+        if not self.referral_code:
+            alphabet = string.ascii_uppercase + string.digits
+            while True:
+                code = ''.join(secrets.choice(alphabet) for _ in range(8))
+                if not User.query.filter_by(referral_code=code).first():
+                    self.referral_code = code
+                    break
+
+
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -216,7 +249,30 @@ class User(db.Model):
             "street_racing_progress": self.street_racing_progress,
             "banned": self.banned,
             "friends": [friend.id for friend in self.friends],  # Only return friend IDs
+
+            "referral_code": self.referral_code,
+            "referral_count": self.referral_count,
+            "total_referral_earnings": self.total_referral_earnings,
+            "referred_by": self.referred_by,
         }
+    
+
+class Referral(db.Model):
+    __tablename__ = 'referrals'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    referrer_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    referred_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    earnings_generated = db.Column(db.BigInteger, default=0)
+    
+    # Relationships
+    referrer = db.relationship('User', foreign_keys=[referrer_id], backref='referrals_made')
+    referred = db.relationship('User', foreign_keys=[referred_id], backref='referrals_received')
+    
+    __table_args__ = (
+        db.UniqueConstraint('referrer_id', 'referred_id', name='unique_referral'),
+    )    
 
 
 
@@ -709,6 +765,37 @@ def auth_with_telegram():
     db.session.commit()
 
 
+    # Handle referral parameter
+    start_param = parsed_data.get('start', [''])[0]
+    referred_by_id = None
+    
+    if start_param and start_param.startswith('ref_'):
+        try:
+            referred_by_id = int(start_param.replace('ref_', ''))
+            # Verify the referrer exists
+            referrer = User.query.get(referred_by_id)
+            if referrer:
+                user.referred_by = referred_by_id
+                referrer.referral_count += 1
+        except (ValueError, AttributeError):
+            pass
+    
+    # Generate referral code for new user
+    if not user.referral_code:
+        user.generate_referral_code()
+    
+    db.session.commit()
+    
+    # Create referral record if applicable
+    if referred_by_id:
+        referral = Referral(
+            referrer_id=referred_by_id,
+            referred_id=user.id
+        )
+        db.session.add(referral)
+        db.session.commit()
+    
+
      # After successful authentication, create a JWT token
     token_payload = {
         'user_id': user.id,
@@ -1117,7 +1204,8 @@ def claim_task():
             return jsonify({"success": False, "message": "Invalid partner campaign"}), 400
         
         # Extract game ID from link
-        game_id = extract_game_id_from_link(campaign.link)
+        # game_id = extract_game_id_from_link(campaign.link)
+        game_id = campaign.link
 
         
         # Check user's current level for this game
@@ -1159,6 +1247,9 @@ def claim_task():
     CONVERSION_RATE = 1000000
     reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
     user.coins += reward
+
+    award_referral_earnings(user.id, reward)
+
 
     db.session.commit()
     db.session.refresh(user)
@@ -1332,7 +1423,7 @@ def check_level_completion(user_id: int, campaign_id: int, current_level: int, r
 
 
 @app.route("/api/webhook-docs/<campaign_id>")
-@jwt_required
+# @jwt_required
 def webhook_docs(campaign_id):
     """Provide documentation for specific partner campaign"""
     campaign = PartnerCampaign.query.get(campaign_id)
@@ -2171,3 +2262,257 @@ def get_user_stats():
 # class User(db.Model):
 #     # ... existing fields ...
 #     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+
+@app.route('/api/referral/claim', methods=['POST'])
+@jwt_required
+def claim_referral_earnings():
+    user = current_user()
+    
+    if user.referral_earnings <= 0:
+        return jsonify({"success": False, "message": "No earnings to claim"}), 400
+    
+    # Transfer earnings to main coins
+    earnings = user.referral_earnings
+    user.coins += earnings
+    user.total_referral_earnings += earnings
+    user.referral_earnings = 0
+    
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": f"Claimed {earnings} coins from referrals",
+        "user": user.to_dict()
+    })
+
+@app.route('/api/referral/invite', methods=['POST'])
+@jwt_required
+def invite_friend_for_spin():
+    user = current_user()
+    
+    # Check daily limit
+    if user.friends_invited_today_for_spin >= 50:
+        return jsonify({
+            "success": False, 
+            "message": "Daily invite limit reached (50 per day)"
+        }), 400
+    
+    # Award spin for sharing
+    user.spins += 1
+    user.friends_invited_today_for_spin += 1
+    
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Thanks for sharing! +1 Spin!",
+        "user": user.to_dict()
+    })
+
+@app.route('/api/referral/friends')
+@jwt_required
+def get_referral_friends():
+    user = current_user()
+    
+    # Get users referred by this user
+    referred_users = User.query.filter_by(referred_by=user.id).all()
+    
+    friends_list = []
+    for friend in referred_users:
+        # Calculate total earnings from this friend
+        friend_earnings = Referral.query.filter_by(
+            referrer_id=user.id,
+            referred_id=friend.id
+        ).first()
+        
+        friends_list.append({
+            "id": friend.id,
+            "name": friend.name,
+            "joined_at": friend.created_at.isoformat() if hasattr(friend, 'created_at') else None,
+            "earnings_generated": friend_earnings.earnings_generated if friend_earnings else 0
+        })
+    
+    return jsonify({
+        "success": True,
+        "friends": friends_list,
+        "total_count": len(referred_users)
+    })
+
+@app.route('/api/referral/info')
+@jwt_required
+def get_referral_info():
+    user = current_user()
+    
+    return jsonify({
+        "success": True,
+        "referral_code": user.referral_code,
+        "referral_link": f"https://t.me/CashUBux_bot?start=ref_{user.id}",
+        "referral_count": user.referral_count,
+        "claimable_earnings": user.referral_earnings,
+        "total_earnings": user.total_referral_earnings,
+        "today_invites": user.friends_invited_today_for_spin,
+        "max_daily_invites": 50
+    })
+
+
+def award_referral_earnings(user_id: int, task_reward: int):
+    """Award 10% of task rewards to referrer"""
+    user = User.query.get(user_id)
+    if not user or not user.referred_by:
+        return
+    
+    referrer = User.query.get(user.referred_by)
+    if not referrer:
+        return
+    
+    referral_bonus = int(task_reward * 0.10)  # 10% commission
+    
+    # Update referrer's earnings
+    referrer.referral_earnings += referral_bonus
+    
+    # Update referral record
+    referral = Referral.query.filter_by(
+        referrer_id=referrer.id,
+        referred_id=user.id
+    ).first()
+    
+    if referral:
+        referral.earnings_generated += referral_bonus
+    
+    db.session.commit()
+
+
+@app.route('/admin/daily-reset', methods=['POST'])
+def daily_reset():
+    """Reset daily counters (should be called by a cron job)"""
+    try:
+        # Reset all users' daily counters
+        User.query.update({
+            User.ads_watched_today: 0,
+            User.tasks_completed_today_for_spin: 0,
+            User.friends_invited_today_for_spin: 0
+        })
+        
+        db.session.commit()
+        return jsonify({"success": True, "message": "Daily counters reset"})
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "message": str(e)}), 500    
+
+
+
+
+
+
+
+@app.route('/api/user/deposit-ad-credit', methods=['POST'])
+@jwt_required
+def deposit_ad_credit():
+    data = request.get_json()
+    user = current_user()
+    
+    amount = data.get('amount')
+    if not amount or amount <= 0:
+        return jsonify({
+            "success": False,
+            "message": "Invalid amount"
+        }), 400
+    
+    try:
+        # Convert to Decimal for precise calculations
+        deposit_amount = Decimal(str(amount))
+        
+        # Update user's ad credit balance
+        user.ad_credit += deposit_amount
+        
+        # Create transaction record (optional)
+        transaction = Transaction(
+            id=f"deposit_{int(datetime.now().timestamp())}_{user.id}",
+            user_id=user.id,
+            type=TransactionType.DEPOSIT,
+            amount=deposit_amount,
+            currency=TransactionCurrency.TON,
+            status=TransactionStatus.COMPLETED
+        )
+        db.session.add(transaction)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Deposit successful",
+            "user": user.to_dict()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Deposit error: {e}")
+        return jsonify({
+            "success": False,
+            "message": "Deposit failed"
+        }), 500
+
+
+#real implemnetaion 
+# @app.route('/api/user/deposit-ad-credit', methods=['POST'])
+# @jwt_required
+# def deposit_ad_credit():
+#     data = request.get_json()
+#     user = current_user()
+    
+#     amount = data.get('amount')
+#     if not amount or amount <= 0:
+#         return jsonify({
+#             "success": False,
+#             "message": "Invalid amount"
+#         }), 400
+    
+#     try:
+#         # In a real implementation, you would:
+#         # 1. Verify the user actually sent the TON to your wallet
+#         # 2. Check blockchain confirmation
+#         # 3. Then update the balance
+        
+#         # For simulation/demo purposes, we'll just update the balance
+#         deposit_amount = Decimal(str(amount))
+        
+#         # Check if user has enough TON balance (if deducting from main balance)
+#         if user.ton < deposit_amount:
+#             return jsonify({
+#                 "success": False,
+#                 "message": "Insufficient TON balance"
+#             }), 400
+        
+#         # Transfer from TON balance to ad credit
+#         user.ton -= deposit_amount
+#         user.ad_credit += deposit_amount
+        
+#         # Create transaction record
+#         transaction = Transaction(
+#             id=f"deposit_ad_{int(datetime.now().timestamp())}_{user.id}",
+#             user_id=user.id,
+#             type=TransactionType.TRANSFER,
+#             amount=deposit_amount,
+#             currency=TransactionCurrency.TON,
+#             status=TransactionStatus.COMPLETED,
+#             description=f"Transferred to ad credit"
+#         )
+#         db.session.add(transaction)
+        
+#         db.session.commit()
+        
+#         return jsonify({
+#             "success": True,
+#             "message": "Deposit successful",
+#             "user": user.to_dict()
+#         })
+        
+#     except Exception as e:
+#         db.session.rollback()
+#         print(f"Deposit error: {e}")
+#         return jsonify({
+#             "success": False,
+#             "message": "Deposit failed"
+#         }), 500        

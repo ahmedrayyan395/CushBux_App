@@ -36,7 +36,7 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 
 const API_BASE_URL = 'http://127.0.0.1:5000';
 // const API_BASE_URL = 'https://api.cashubux.com/';
-// const API_BASE_URL = 'https://e5443511a470.ngrok-free.app';
+// const API_BASE_URL = ' https://c80e5cd1fb54.ngrok-free.app';
 
 
 // const API_BASE_URL = 'https://b288ef9b791f.ngrok-free.app';
@@ -691,6 +691,46 @@ export const updateDailyTaskStatus = async (
 };
 
 
+// services/api.ts
+export const claimReferralEarnings = async (): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+}> => {
+  return apiFetch('/api/referral/claim', {
+    method: 'POST',
+  });
+};
+
+export const inviteFriendForSpin = async (): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+}> => {
+  return apiFetch('/api/referral/invite', {
+    method: 'POST',
+  });
+};
+
+export const fetchFriends = async (): Promise<Friend[]> => {
+  const result = await apiFetch('/api/referral/friends');
+  return result.friends || [];
+};
+
+export const getReferralInfo = async (): Promise<{
+  referral_code: string;
+  referral_link: string;
+  referral_count: number;
+  claimable_earnings: number;
+  total_earnings: number;
+  today_invites: number;
+  max_daily_invites: number;
+}> => {
+  return apiFetch('/api/referral/info');
+};
+
+
+
 
 // services/api.ts
 // export const fetchAllUsers = async (): Promise<User[]> => {
@@ -1172,10 +1212,10 @@ export const fetchTransactions = async (): Promise<Transaction[]> => {
   return [...transactions];
 };
 
-export const fetchFriends = async (): Promise<Friend[]> => {
-  await simulateDelay(300);
-  return [...MOCK_FRIENDS];
-};
+// export const fetchFriends = async (): Promise<Friend[]> => {
+//   await simulateDelay(300);
+//   return [...MOCK_FRIENDS];
+// };
 
 export const fetchUserCampaigns = async (): Promise<UserCampaign[]> => {
     await simulateDelay(600);
@@ -1247,15 +1287,15 @@ export const addPartnerTask = async (campaignData: { link: string; goal: number;
 //   return { success: false, user: null };
 // };
 
-export const claimReferralEarnings = async (): Promise<{ success: boolean; user: User | null }> => {
-    await simulateDelay();
-    if(users[0].referralEarnings > 0) {
-        users[0].coins += users[0].referralEarnings;
-        users[0].referralEarnings = 0;
-        return { success: true, user: { ...users[0] } };
-    }
-    return { success: false, user: null };
-}
+// export const claimReferralEarnings = async (): Promise<{ success: boolean; user: User | null }> => {
+//     await simulateDelay();
+//     if(users[0].referralEarnings > 0) {
+//         users[0].coins += users[0].referralEarnings;
+//         users[0].referralEarnings = 0;
+//         return { success: true, user: { ...users[0] } };
+//     }
+//     return { success: false, user: null };
+// }
 
 
 export const createAdminTask = async (task: Omit<Task, 'id' | 'icon'>): Promise<{ success: boolean, task?: Task }> => {
@@ -1367,15 +1407,15 @@ export const completeTask = async(taskId:number,userid:number): Promise<{success
     return { success: true, message: "+1 Spin for completing a task!", user: { ...users[0] } };
 }
 
-export const inviteFriendForSpin = async(): Promise<{success: boolean; message: string; user?: User}> => {
-    await simulateDelay(50);
-     if (users[0].friendsInvitedTodayForSpin >= 50) {
-        return { success: false, message: "Daily limit for friend invite spins reached." };
-    }
-    users[0].friendsInvitedTodayForSpin += 1;
-    users[0].spins += 1;
-    return { success: true, message: "+1 Spin for inviting a friend!", user: { ...users[0] } };
-}
+// export const inviteFriendForSpin = async(): Promise<{success: boolean; message: string; user?: User}> => {
+//     await simulateDelay(50);
+//      if (users[0].friendsInvitedTodayForSpin >= 50) {
+//         return { success: false, message: "Daily limit for friend invite spins reached." };
+//     }
+//     users[0].friendsInvitedTodayForSpin += 1;
+//     users[0].spins += 1;
+//     return { success: true, message: "+1 Spin for inviting a friend!", user: { ...users[0] } };
+// }
 
 export const buySpins = async (packageId: string, currency: 'TON' | 'COINS'): Promise<{ success: boolean; message: string; user?: User; }> => {
     await simulateDelay(1000);
