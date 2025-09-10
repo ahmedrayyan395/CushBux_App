@@ -34,12 +34,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
 // const API_BASE_URL = 'https://api.cashubux.com/';
-// const API_BASE_URL = ' https://c80e5cd1fb54.ngrok-free.app';
 
-
-// const API_BASE_URL = 'https://b288ef9b791f.ngrok-free.app';
+const API_BASE_URL = 'https://0907dd6091f7.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -235,7 +233,7 @@ export const apiFetch = async <T = any>(
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      credentials: 'include',
+      // credentials: 'same-origin',
     });
 
     console.log(`[apiFetch] Received response for ${endpoint}:`, {
@@ -419,17 +417,19 @@ export const loginWithTelegram = async (telegramInitData: string): Promise<User>
 };
 
 // Campaign API functions - FIXED to use apiFetch correctly
-export const fetchAllCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
-  return apiFetch<(UserCampaign | PartnerCampaign)[]>('/campaigns', {
+export const fetchAllCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
+  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/campaigns?user_id=${userId}`, {
     method: 'GET',
   });
 };
 
-export const fetchUserCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
-  return apiFetch<(UserCampaign | PartnerCampaign)[]>('/my-campaigns', {
+
+export const fetchUserCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
+  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/my-campaigns?user_id=${userId}`, {
     method: 'GET',
   });
 };
+
 
 // export const fetchMyCreatedCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
 //   return apiFetch<(UserCampaign | PartnerCampaign)[]>('/my-campaigns', {
@@ -474,13 +474,13 @@ export const addUserCampaignAPI = async (
   user?: User;
 }> => {
   const payload: any = {
-    userid: campaignData.userid,
+    user_id: campaignData.userid, // ✅ changed from userid to user_id
     link: campaignData.link,
     goal: campaignData.goal,
     cost: campaignData.cost,
     languages: campaignData.languages,
     category: campaignData.category,
-    checkSubscription: campaignData.checkSubscription || false
+    checkSubscription: campaignData.checkSubscription || false,
   };
 
   if (campaignData.level !== undefined) {
@@ -492,6 +492,7 @@ export const addUserCampaignAPI = async (
     body: JSON.stringify(payload),
   });
 };
+
 
 
 
@@ -702,22 +703,26 @@ export const claimReferralEarnings = async (): Promise<{
   });
 };
 
-export const inviteFriendForSpin = async (): Promise<{
+export const inviteFriendForSpin = async (userId: number): Promise<{
   success: boolean;
   message: string;
   user?: User;
 }> => {
   return apiFetch('/api/referral/invite', {
     method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
   });
 };
 
-export const fetchFriends = async (): Promise<Friend[]> => {
-  const result = await apiFetch('/api/referral/friends');
+
+export const fetchFriends = async (userId: number): Promise<Friend[]> => {
+  const result = await apiFetch(`/api/referral/friends?user_id=${userId}`);
   return result.friends || [];
 };
 
-export const getReferralInfo = async (): Promise<{
+
+
+export const getReferralInfo = async (userId: number): Promise<{
   referral_code: string;
   referral_link: string;
   referral_count: number;
@@ -726,8 +731,9 @@ export const getReferralInfo = async (): Promise<{
   today_invites: number;
   max_daily_invites: number;
 }> => {
-  return apiFetch('/api/referral/info');
+  return apiFetch(`/api/referral/info?user_id=${userId}`);
 };
+
 
 
 
@@ -1111,15 +1117,14 @@ export const executeWithdrawal = async (amountInTon: number): Promise<{ success:
 
 
 //here all the magic 
-export const depositAdCreditAPI = async (amount: number): Promise<{ success: boolean; user: User }> => {
+export const depositAdCreditAPI = async (userId: number, amount: number): Promise<{ success: boolean; user: User }> => {
     try {
-        // apiFetch already returns the parsed JSON data, not a Response object
-        const data = await apiFetch<{ success: boolean; user: User }>('/api/user/deposit-ad-credit', {
+        const data = await apiFetch<{ success: boolean; user: User }>('/user/deposit-ad-credit', {
             method: 'POST',
-            body: JSON.stringify({ amount })
+            body: JSON.stringify({ user_id: userId, amount:amount })
         });
 
-        console.log('Deposit API response:', data); // Debug log
+        console.log('Deposit API response:', data);
 
         if (!data.success) {
             throw new Error('Deposit failed');
@@ -1131,6 +1136,7 @@ export const depositAdCreditAPI = async (amount: number): Promise<{ success: boo
         return { success: false, user: null };
     }
 };
+
 
 // export const depositAdCredit = async (
 //   amount: number

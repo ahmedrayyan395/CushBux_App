@@ -14,8 +14,9 @@ export default defineConfig(({ mode }) => {
         },
         server: {
             allowedHosts: [
-                '00a2bb387e03.ngrok-free.app',
-                'localhost', // You can also add localhost if needed
+                'beec3487adbd.ngrok-free.app',
+                'localhost',
+                'bot.cashubux.com' // You can also add localhost if needed
             ],
             // Optionally, you can add other server settings like port, cors, etc.
             port: 3000, // Change to your desired port

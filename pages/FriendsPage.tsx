@@ -29,8 +29,8 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
     try {
       setLoading(true);
       const [friendsData, referralData] = await Promise.all([
-        fetchFriends(),
-        getReferralInfo()
+        fetchFriends(user.id),
+        getReferralInfo(user.id)
       ]);
       setFriends(friendsData);
       setReferralInfo(referralData);
@@ -50,7 +50,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
       if (result.success && result.user) {
         setUser(result.user);
         // Refresh referral info
-        const newReferralInfo = await getReferralInfo();
+        const newReferralInfo = await getReferralInfo(user.id);
         setReferralInfo(newReferralInfo);
       }
     } catch (error) {
@@ -73,11 +73,11 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
     
     setSharing(true);
     try {
-      const result = await inviteFriendForSpin();
+      const result = await inviteFriendForSpin(user.id);
       if (result.success && result.user) {
         setUser(result.user);
         // Refresh referral info to update today's invite count
-        const newReferralInfo = await getReferralInfo();
+        const newReferralInfo = await getReferralInfo(user.id);
         setReferralInfo(newReferralInfo);
       }
       
@@ -93,7 +93,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
   };
 
   const claimableEarnings = user?.referral_earnings || 0;
-  const referralLink = referralInfo?.referral_link || 'https://t.me/@CashUBux_bot?start=ref_loading';
+  const referralLink = referralInfo?.referral_link || 'https://t.me/CashUBux_bot?start=ref_loading';
   const todayInvites = referralInfo?.today_invites || 0;
   const maxDailyInvites = referralInfo?.max_daily_invites || 50;
   const totalFriends = referralInfo?.referral_count || 0;

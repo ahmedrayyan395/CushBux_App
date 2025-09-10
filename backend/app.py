@@ -4,6 +4,7 @@ from decimal import Decimal
 import enum
 from io import StringIO
 import os
+import re
 import secrets
 import string
 # models.py
@@ -28,6 +29,7 @@ import os
 from functools import wraps
 from dotenv import load_dotenv
 # from backend.routes import admin_management
+from flask_cors import cross_origin
 
 # Initialize the SQLAlchemy extension
 load_dotenv()
@@ -39,8 +41,8 @@ CORS(
     origins=[
         "https://bot.cashubux.com",
         "https://admin.cashubux.com",
-        "http://localhost:3000",  # For local development
-        "http://localhost:5173"   # For Vite development server
+        "http://localhost:3000",
+        "https://beec3487adbd.ngrok-free.app",  # For local development
     ],
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
@@ -87,7 +89,7 @@ def seed_users():
             name="Alice",
             coins=50000000,
             ton=1.25,
-            referral_earnings=100,
+            referral_earnings=0,
             spins=5,
             ad_credit=200.0,
             ads_watched_today=2,
@@ -175,7 +177,7 @@ class User(db.Model):
     spins = db.Column(db.Integer, nullable=False, default=0)
     ad_credit = db.Column(db.Numeric(12, 4), nullable=False, default=0.0)
     
-    # Daily Tracking Columns (would need a separate process/job to reset daily)
+    # Daily Tracking Columns
     ads_watched_today = db.Column(db.Integer, nullable=False, default=0)
     tasks_completed_today_for_spin = db.Column(db.Integer, nullable=False, default=0)
     friends_invited_today_for_spin = db.Column(db.Integer, nullable=False, default=0)
@@ -185,77 +187,51 @@ class User(db.Model):
     street_racing_progress = db.Column(JSON, nullable=False, default=lambda: {"currentCar": 1, "unlockedCars": [1], "carUpgrades": {}, "careerPoints": 0, "adProgress": {"engine": 0, "tires": 0, "nitro": 0}})
 
     banned = db.Column(db.Boolean, default=False)
-
-
-
-     # ✅ Add this:
+    
+    # Daily tasks relationship
     daily_tasks = db.relationship(
         "DailyTask",
         secondary="user_daily_task_completions",
         back_populates="users"
     )
-    
-    # Relationships
+
+    # Friends relationships
     friends = db.relationship('User',
                               secondary=friendships,
                               primaryjoin=(id == friendships.c.user_id),
                               secondaryjoin=(id == friendships.c.friend_id),
                               backref="friend_of")
 
-
-
-    # Referral tracking
-    referral_code = db.Column(db.String(10), unique=True, nullable=True)
+    # Referral tracking - REMOVE referral_code since we're using user ID
     referred_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
     referral_count = db.Column(db.Integer, default=0)
     total_referral_earnings = db.Column(db.BigInteger, default=0)
-    
+
     # Relationships
-    referrals = db.relationship('User', 
-                               foreign_keys=[referred_by],
-                               backref=db.backref('referrer', remote_side=[id]))
-
-
-
-
-    def generate_referral_code(self):
-        """Generate a unique referral code"""
-        import secrets
-        import string
-        
-        if not self.referral_code:
-            alphabet = string.ascii_uppercase + string.digits
-            while True:
-                code = ''.join(secrets.choice(alphabet) for _ in range(8))
-                if not User.query.filter_by(referral_code=code).first():
-                    self.referral_code = code
-                    break
-
-
-
+    referrals = db.relationship('User',
+                                foreign_keys=[referred_by],
+                                backref=db.backref('referrer', remote_side=[id]))
+    
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
             "coins": self.coins,
-            "ton": float(self.ton),  # Convert Decimal to float for JSON-serializable output
+            "ton": float(self.ton),
             "referral_earnings": self.referral_earnings,
             "spins": self.spins,
-            "ad_credit": float(self.ad_credit),  # Same as above
+            "ad_credit": float(self.ad_credit),
             "ads_watched_today": self.ads_watched_today,
             "tasks_completed_today_for_spin": self.tasks_completed_today_for_spin,
             "friends_invited_today_for_spin": self.friends_invited_today_for_spin,
             "space_defender_progress": self.space_defender_progress,
             "street_racing_progress": self.street_racing_progress,
             "banned": self.banned,
-            "friends": [friend.id for friend in self.friends],  # Only return friend IDs
-
-            "referral_code": self.referral_code,
+            "friends": [friend.id for friend in self.friends],
             "referral_count": self.referral_count,
             "total_referral_earnings": self.total_referral_earnings,
             "referred_by": self.referred_by,
-        }
-    
+        }    
 
 class Referral(db.Model):
     __tablename__ = 'referrals'
@@ -272,10 +248,7 @@ class Referral(db.Model):
     
     __table_args__ = (
         db.UniqueConstraint('referrer_id', 'referred_id', name='unique_referral'),
-    )    
-
-
-
+    )
 
 class TaskCategory(enum.Enum):
     DAILY = 'Daily'
@@ -700,165 +673,149 @@ def auth_with_telegram():
     data = request.get_json()
     init_data_str = data.get('initData')
 
-   
-
-    # !!! CRITICAL SECURITY STEP: You MUST validate the hash here !!!
-    # (Your validation logic would go here)
-
     if not init_data_str:
         return jsonify({"error": "initData is required"}), 400
 
-    # Validate the initData
-    # bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-    # if not bot_token:
-    #     return jsonify({"error": "Server configuration error"}), 500
-
-    # is_valid = validate_telegram_init_data_simple(init_data_str, bot_token)
-    
-    # if not is_valid:
-    #     return jsonify({"error": "Invalid authentication data"}), 401
-
-    # Use the same parsing method for consistency
-    parsed_data = parse_qs(init_data_str)
-    
-    # Get the user parameter (already URL-decoded by parse_qs)
-    user_params = parsed_data.get('user')
-    if not user_params:
-        return jsonify({"error": "User data is missing from initData"}), 400
-
-    # parse_qs returns a list of values, so we take the first one
-    user_param = user_params[0]
-    
-    # Parse the JSON user data
     try:
+        # Parse the init data
+        parsed_data = parse_qs(init_data_str)
+        
+        # Get the user parameter
+        user_params = parsed_data.get('user')
+        if not user_params:
+            return jsonify({"error": "User data is missing from initData"}), 400
+
+        # Parse the JSON user data
+        user_param = user_params[0]
         user_data = json.loads(user_param)
-    except json.JSONDecodeError:
-        return jsonify({"error": "Failed to decode user JSON"}), 400
 
-    id = user_data.get('id')
-    if not id:
-        return jsonify({"error": "Invalid user data in initData"}), 400
+        telegram_id = user_data.get('id')
+        if not telegram_id:
+            return jsonify({"error": "Invalid user data in initData"}), 400
 
-    
-    # Find or create the user
-    user = User.query.filter_by(id=id).first()
-    if not user:
-        user = User(
-            id=id,
-            name=user_data.get('username') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or "Anonymous",
-            coins=0,
-            ton=0.0,
-            referral_earnings=0,
-            spins=10,
-            ad_credit=0.0,
-            ads_watched_today=0,
-            tasks_completed_today_for_spin=0,
-            friends_invited_today_for_spin=0,
-            space_defender_progress={"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1},
-            street_racing_progress={"currentCar": 1, "unlockedCars": [1], "carUpgrades": {}, "careerPoints": 0, "adProgress": {"engine": 0, "tires": 0, "nitro": 0}},
-            banned=False
-        )
-        db.session.add(user)
+        referred_by_id = None
+        
+        # Check if this is a referral launch by looking for startapp parameter
+        # This would be in the URL when the Mini App is opened via referral link
+        startapp_params = parsed_data.get('startapp')
+        if startapp_params:
+            try:
+                startapp_param = startapp_params[0]
+                if startapp_param.startswith('ref_'):
+                    referred_by_id = int(startapp_param.replace('ref_', ''))
+            except (ValueError, AttributeError):
+                referred_by_id = None
+        
+        # Also check for regular start parameter (for web app compatibility)
+        start_params = parsed_data.get('start')
+        if not referred_by_id and start_params:
+            try:
+                start_param = start_params[0]
+                if start_param.startswith('ref_'):
+                    referred_by_id = int(start_param.replace('ref_', ''))
+            except (ValueError, AttributeError):
+                referred_by_id = None
 
-    # Always update last_login for returning users
-    # user.last_login = datetime.now()
-    db.session.commit()
+        # Validate referrer
+        if referred_by_id:
+            if referred_by_id == telegram_id:
+                referred_by_id = None  # Prevent self-referral
+            else:
+                referrer = User.query.get(referred_by_id)
+                if not referrer:
+                    referred_by_id = None  # Referrer doesn't exist
 
+        # Find or create the user
+        user = User.query.get(telegram_id)
+        is_new_user = False
+        
+        if not user:
+            is_new_user = True
+            user = User(
+                id=telegram_id,
+                name=user_data.get('username') or 
+                     f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or 
+                     "Anonymous",
+                coins=0,
+                ton=0.0,
+                referral_earnings=0,
+                spins=10,
+                ad_credit=0.0,
+                ads_watched_today=0,
+                tasks_completed_today_for_spin=0,
+                friends_invited_today_for_spin=0,
+                space_defender_progress={"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1},
+                street_racing_progress={
+                    "currentCar": 1, 
+                    "unlockedCars": [1], 
+                    "carUpgrades": {}, 
+                    "careerPoints": 0, 
+                    "adProgress": {"engine": 0, "tires": 0, "nitro": 0}
+                },
+                banned=False,
+                referred_by=referred_by_id
+            )
+            db.session.add(user)
+        else:
+            # For existing users, update name if it changed
+            new_name = user_data.get('username') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or "Anonymous"
+            if user.name != new_name:
+                user.name = new_name
+            
+            # Only set referral if user doesn't have one already and referral is valid
+            if not user.referred_by and referred_by_id and referred_by_id != user.id:
+                user.referred_by = referred_by_id
 
-    # Handle referral parameter
-    start_param = parsed_data.get('start', [''])[0]
-    referred_by_id = None
-    
-    if start_param and start_param.startswith('ref_'):
-        try:
-            referred_by_id = int(start_param.replace('ref_', ''))
-            # Verify the referrer exists
+        # Update referrer's count for new users only
+        if is_new_user and referred_by_id and referred_by_id != user.id:
             referrer = User.query.get(referred_by_id)
             if referrer:
-                user.referred_by = referred_by_id
                 referrer.referral_count += 1
-        except (ValueError, AttributeError):
-            pass
-    
-    # Generate referral code for new user
-    if not user.referral_code:
-        user.generate_referral_code()
-    
-    db.session.commit()
-    
-    # Create referral record if applicable
-    if referred_by_id:
-        referral = Referral(
-            referrer_id=referred_by_id,
-            referred_id=user.id
-        )
-        db.session.add(referral)
+                # Create referral record
+                referral = Referral(
+                    referrer_id=referred_by_id,
+                    referred_id=user.id,
+                    earnings_generated=0
+                )
+                db.session.add(referral)
+
         db.session.commit()
-    
 
-     # After successful authentication, create a JWT token
-    token_payload = {
-        'user_id': user.id,
-        # 'exp': datetime.now + timedelta(days=7)
-        'exp': datetime.now() + timedelta(days=7)  # CORRECT: datetime.utcnow() with parentheses
+        # Create JWT token
+        token_payload = {
+            'user_id': user.id,
+            'exp': datetime.utcnow() + timedelta(days=7)
+        }
+        jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        
+        # Return user data with token
+        user_dict = user.to_dict()
+        user_dict['token'] = jwt_token
+        user_dict['is_new_user'] = is_new_user
 
-    }
-    jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-    
-    # Return both user data and token
-    user_data = user.to_dict()
-    user_data['token'] = jwt_token
+        return jsonify(user_dict)
 
-    # Store the user's ID in the session to log them in
-    session['user_id'] = user.id
-
-    # Return both user data and token
-    return jsonify(user_data)
-
-
-
-
-
-
-
-# @app.route('/usercampaigns', methods=['GET'])
-# @jwt_required  # Use this or  depending on your needs
-# def fetchUserCampaigns():
-#     """Returns all campaigns (both User and Partner)."""
-#     campaigns = UserCampaign.query.filter(
-#     or_(
-#         UserCampaign.category == TaskCategory.GAME,
-#         UserCampaign.category == TaskCategory.SOCIAL
-#     )
-# ).order_by(UserCampaign.id).all()
-    
-#     return jsonify([c.to_dict() for c in campaigns]), 200
-
-
-
-
-# @app.route('/campaigns', methods=['GET'])
-# @jwt_required  # Use this or  depending on your needs
-# def get_all_campaigns():
-#     """Returns all campaigns (both User and Partner)."""
-#     campaigns = UserCampaign.query.order_by(UserCampaign.id).all()
-#     return jsonify([c.to_dict() for c in campaigns]), 200
-
-
-
-
-
-
+    except json.JSONDecodeError:
+        return jsonify({"error": "Failed to decode user JSON"}), 400
+    except Exception as e:
+        db.session.rollback()
+        print(f"Auth error: {e}")
+        return jsonify({"error": "Authentication failed"}), 500
 @app.route('/my-campaigns', methods=['GET'])
 @jwt_required  # Use this or  depending on your needs
 def get_my_created_campaigns():
-    
-    
-    user = current_user()
 
-    current_user_id=user.id
+    user_id = request.args.get('user_id', type=int)
+    
+    if not user_id:
+        return jsonify({"success": False, "message": "Missing user_id"}), 400
 
-    user_campaigns = UserCampaign.query.filter_by(creator_id=current_user_id).order_by(UserCampaign.id).all()
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+
+    user_campaigns = UserCampaign.query.filter_by(creator_id=user_id).order_by(UserCampaign.id).all()
     
     if not user_campaigns:
         return jsonify([]), 200
@@ -909,7 +866,15 @@ def get_my_unclaimed_created_campaigns():
 def get_all_uncompleted_campaigns():
     """Return all campaigns except the ones the current user has already completed."""
     try:
-        current_user_id = current_user().id
+        current_user_id = request.args.get('user_id', type=int)
+
+        if not current_user_id:
+            return jsonify({"success": False, "message": "Missing user_id"}), 400
+
+        user = User.query.get(current_user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
 
         # Get all campaign IDs completed by this user
         completed_records = db.session.execute(
@@ -943,7 +908,13 @@ def get_all_uncompleted_campaigns():
 @jwt_required
 def create_campaign():
     data = request.get_json()
-    user = current_user()
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({"success": False, "message": "User ID is required"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
 
     # Ensure ad_credit check
     if user.ad_credit < Decimal(str(data['cost'])):
@@ -956,7 +927,7 @@ def create_campaign():
     user.ad_credit -= Decimal(str(data['cost']))
 
     # Required fields
-    required = ['userid', 'link', 'goal', 'cost', 'languages', 'category']
+    required = ['user_id', 'link', 'goal', 'cost', 'languages', 'category']
     if not all(k in data for k in required):
         return jsonify({
             "success": False,
@@ -964,11 +935,11 @@ def create_campaign():
         }), 400
 
     # Check creator exists
-    creator = User.query.get(data['userid'])
+    creator = User.query.get(data['user_id'])
     if not creator:
         return jsonify({
             "success": False,
-            "message": f"Creator user with id {data['userid']} not found"
+            "message": f"Creator user with id {data['user_id']} not found"
         }), 404
 
     # Parse category safely
@@ -992,7 +963,7 @@ def create_campaign():
     # Create the right campaign type
     if 'requiredLevel' in data:
         new_campaign = PartnerCampaign(
-            creator_id=data['userid'],
+            creator_id=data['user_id'],
             link=data['link'],
             langs=langs,
             status="ACTIVE",
@@ -1005,7 +976,7 @@ def create_campaign():
         )
     else:
         new_campaign = UserCampaign(
-            creator_id=data['userid'],
+            creator_id=data['user_id'],
             link=data['link'],
             langs=langs,
             status="ACTIVE",
@@ -1188,7 +1159,7 @@ def claim_task():
         bot_username = campaign.link.replace('https://t.me/', '').split('?')[0]
         
         # Check if user started the bot
-        bot_started = check_user_started_bot(bot_username, user.telegram_id)
+        bot_started = check_user_started_bot(bot_username, user.id)
         
         if not bot_started:
             return jsonify({
@@ -2264,6 +2235,7 @@ def get_user_stats():
 #     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 
+
 @app.route('/api/referral/claim', methods=['POST'])
 @jwt_required
 def claim_referral_earnings():
@@ -2289,8 +2261,16 @@ def claim_referral_earnings():
 @app.route('/api/referral/invite', methods=['POST'])
 @jwt_required
 def invite_friend_for_spin():
-    user = current_user()
+    user_id = request.json.get('user_id')
     
+    if not user_id:
+        return jsonify({"success": False, "message": "user_id is required"}), 400
+    
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+        
     # Check daily limit
     if user.friends_invited_today_for_spin >= 50:
         return jsonify({
@@ -2313,8 +2293,15 @@ def invite_friend_for_spin():
 @app.route('/api/referral/friends')
 @jwt_required
 def get_referral_friends():
-    user = current_user()
+    user_id = request.args.get('user_id', type=int)
     
+    if not user_id:
+        return jsonify({"success": False, "message": "Missing user_id"}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+        
     # Get users referred by this user
     referred_users = User.query.filter_by(referred_by=user.id).all()
     
@@ -2342,18 +2329,37 @@ def get_referral_friends():
 @app.route('/api/referral/info')
 @jwt_required
 def get_referral_info():
-    user = current_user()
+    user_id = request.args.get('user_id', type=int)
+    
+    if not user_id:
+        return jsonify({"success": False, "error": "user_id is required"}), 400
+    
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+        
+    # Get your bot username from environment or config
+    bot_username = os.getenv('TELEGRAM_BOT_USERNAME', 'CashUBux_bot')
+    
+    # CORRECT FORMAT for Telegram Mini Apps:
+    # Use this format to open the Mini App directly with start parameter
+    referral_link = f"https://t.me/{bot_username}?startapp=ref_{user.id}"
+    
+    # ALTERNATIVE: If you want to use the /app format, it should be:
+    # referral_link = f"https://t.me/{bot_username}/app?startapp=ref_{user.id}"
     
     return jsonify({
         "success": True,
-        "referral_code": user.referral_code,
-        "referral_link": f"https://t.me/CashUBux_bot?start=ref_{user.id}",
+        "referral_code": str(user.id),
+        "referral_link": referral_link,
         "referral_count": user.referral_count,
         "claimable_earnings": user.referral_earnings,
         "total_earnings": user.total_referral_earnings,
         "today_invites": user.friends_invited_today_for_spin,
         "max_daily_invites": 50
     })
+
 
 
 def award_referral_earnings(user_id: int, task_reward: int):
@@ -2407,27 +2413,41 @@ def daily_reset():
 
 
 
-@app.route('/api/user/deposit-ad-credit', methods=['POST'])
+@app.route('/user/deposit-ad-credit', methods=['POST'])
 @jwt_required
 def deposit_ad_credit():
     data = request.get_json()
-    user = current_user()
     
+    user_id = data.get('user_id')
     amount = data.get('amount')
+
+    if not user_id or not isinstance(user_id, int):
+        return jsonify({
+            "success": False,
+            "message": "User ID is required and must be an integer"
+        }), 400
+
     if not amount or amount <= 0:
         return jsonify({
             "success": False,
             "message": "Invalid amount"
         }), 400
-    
+
     try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({
+                "success": False,
+                "message": "User not found"
+            }), 404
+
         # Convert to Decimal for precise calculations
         deposit_amount = Decimal(str(amount))
-        
+
         # Update user's ad credit balance
         user.ad_credit += deposit_amount
-        
-        # Create transaction record (optional)
+
+        # Create transaction record
         transaction = Transaction(
             id=f"deposit_{int(datetime.now().timestamp())}_{user.id}",
             user_id=user.id,
@@ -2437,15 +2457,14 @@ def deposit_ad_credit():
             status=TransactionStatus.COMPLETED
         )
         db.session.add(transaction)
-        
         db.session.commit()
-        
+
         return jsonify({
             "success": True,
             "message": "Deposit successful",
             "user": user.to_dict()
         })
-        
+
     except Exception as e:
         db.session.rollback()
         print(f"Deposit error: {e}")

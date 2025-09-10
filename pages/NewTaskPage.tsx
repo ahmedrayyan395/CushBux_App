@@ -6,12 +6,15 @@ import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserC
 import ProgressBar from '../components/ProgressBar';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 
-const MyTasksComponent: React.FC = () => {
+interface MyTasksComponentProps {
+  userid: number;
+}
+const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
   const [campaigns, setCampaigns] = useState<UserCampaign[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUserCampaignsAPI().then(data => {
+      fetchUserCampaignsAPI(userid).then(data => {
       setCampaigns(data);
       setLoading(false);
     });
@@ -282,7 +285,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
           const amount = parseFloat(amountStr);
           if (!isNaN(amount) && amount > 0) {
               alert(`Simulating deposit of ${amount} TON. This will be reflected in your balance.`);
-              const result = await depositAdCreditAPI(amount);
+              const result = await depositAdCreditAPI(user.id, amount);
+
               if (result.success) {
                   setUser(result.user);
                   alert("Deposit successful!");
@@ -304,15 +308,16 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
       
       setIsProcessing(true);
       try {
-          const result = await addUserCampaignAPI({
-              userid: user.id,
-              link: taskLink,
-              goal: selectedTier.completions,
-              cost: totalCost,
-              category: selectedCategory,
-              languages: selectedLanguages,
-              checkSubscription: selectedCategory === 'Social' ? checkSubscription : false
-          });
+        const result = await addUserCampaignAPI({
+        userid: user.id,
+        link: taskLink,
+        goal: selectedTier.completions,
+        cost: totalCost,
+        category: selectedCategory,
+        languages: selectedLanguages,
+        checkSubscription: selectedCategory === 'Social' ? checkSubscription : false,
+      });
+
 
           if (result.success && result.user) {
               alert(result.message);
@@ -391,7 +396,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
               />
             </>
         ) : (
-            <MyTasksComponent key={campaignsVersion} />
+            <MyTasksComponent key={campaignsVersion} userid={user.id}/>
         )}
       </main>
       

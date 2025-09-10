@@ -190,7 +190,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
 
   const loadAllData = async () => {
     try {
-      const campaignsData = await fetchAllCampaignsAPI();
+      const campaignsData = await fetchAllCampaignsAPI(user.id);
       setCampaigns(campaignsData);
 
       const dailyTasksData = await fetchDailyTasksAPI();
