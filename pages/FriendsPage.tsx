@@ -46,7 +46,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
     
     setClaiming(true);
     try {
-      const result = await claimReferralEarnings();
+      const result = await claimReferralEarnings(user.id);
       if (result.success && result.user) {
         setUser(result.user);
         // Refresh referral info
@@ -96,7 +96,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
   const referralLink = referralInfo?.referral_link || 'https://t.me/CashUBux_bot?start=ref_loading';
   const todayInvites = referralInfo?.today_invites || 0;
   const maxDailyInvites = referralInfo?.max_daily_invites || 50;
-  const totalFriends = referralInfo?.referral_count || 0;
+  const totalFriends = friends?.length || 0;
   const totalEarnings = referralInfo?.total_earnings || 0;
 
   if (loading) {
@@ -248,7 +248,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
                 </div>
                 <div className="text-right">
                   <p className="text-green-400 text-sm font-semibold">
-                    +{Math.floor((friend.earnings_generated || 0) * 0.1).toLocaleString()}
+                    +{friend.earnings_generated .toLocaleString()}
                   </p>
                   <p className="text-slate-400 text-xs">your earnings</p>
                 </div>

@@ -125,17 +125,23 @@ const App: React.FC = () => {
           return;
          }
 
+          // Inside your PROD MODE section, add this:
           console.log("5. PROD MODE: Waiting for Telegram to be ready...");
           window.Telegram.WebApp.ready();
           window.Telegram.WebApp.expand();
-          
+                
           const initData = window.Telegram.WebApp.initData;
           console.log("6. PROD MODE: Telegram is ready. initData length:", initData?.length || 0);
-
+                
+          // ADD DEBUG INFO FOR START PARAMETER
+          const startParam = window.Telegram.WebApp.initDataUnsafe.start_param;
+          console.log("DEBUG - Start parameter from WebApp:", startParam);
+          console.log("DEBUG - Full initDataUnsafe:", window.Telegram.WebApp.initDataUnsafe);
+                
           if (!initData) {
             throw new Error("initData is empty even after ready() was called.");
           }
-          
+                    
           console.log("7. PROD MODE: Calling loginWithTelegram...");
           const authenticatedUser = await loginWithTelegram(initData);
           console.log("8. PROD MODE: loginWithTelegram was successful. Received user data:", authenticatedUser);

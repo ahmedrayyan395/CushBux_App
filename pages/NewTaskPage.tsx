@@ -300,7 +300,8 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   };
 
   const adBalance = user?.ad_credit || 0;
-  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
+  // const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
+  const formIsValid = selectedTier 
   const canAfford = adBalance >= totalCost;
   
   const handleCreateCampaign = async () => {

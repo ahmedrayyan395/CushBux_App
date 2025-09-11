@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: f45ba2da7cd9
+Revision ID: bb77cd2bcff7
 Revises: 
-Create Date: 2025-09-10 04:57:10.395526
+Create Date: 2025-09-11 11:03:20.118486
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f45ba2da7cd9'
+revision = 'bb77cd2bcff7'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -70,13 +70,11 @@ def upgrade():
     sa.Column('space_defender_progress', sa.JSON(), nullable=False),
     sa.Column('street_racing_progress', sa.JSON(), nullable=False),
     sa.Column('banned', sa.Boolean(), nullable=True),
-    sa.Column('referral_code', sa.String(length=10), nullable=True),
     sa.Column('referred_by', sa.BigInteger(), nullable=True),
     sa.Column('referral_count', sa.Integer(), nullable=True),
     sa.Column('total_referral_earnings', sa.BigInteger(), nullable=True),
     sa.ForeignKeyConstraint(['referred_by'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('referral_code')
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_table('daily_tasks',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),

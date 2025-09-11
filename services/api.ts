@@ -34,10 +34,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'http://127.0.0.1:5000';
 // const API_BASE_URL = 'https://api.cashubux.com/';
 
-const API_BASE_URL = 'https://0907dd6091f7.ngrok-free.app';
+// const API_BASE_URL = 'https://1e30ee36ed36.ngrok-free.app ';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -393,11 +393,18 @@ export const devLogin = async (userId: number): Promise<User> => {
   };
 };
 
+
 export const loginWithTelegram = async (telegramInitData: string): Promise<User> => {
   try {
+    // Extract start parameter from Telegram WebApp
+    const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param || '';
+    
     const response = await apiFetch<any>('/auth/telegram', {
       method: 'POST',
-      body: JSON.stringify({ initData: telegramInitData }),
+      body: JSON.stringify({ 
+        initData: telegramInitData,
+        startParam: startParam // Add this line
+      }),
     });
 
     // Store the JWT token if provided by the backend
@@ -415,6 +422,9 @@ export const loginWithTelegram = async (telegramInitData: string): Promise<User>
     throw error;
   }
 };
+
+
+
 
 // Campaign API functions - FIXED to use apiFetch correctly
 export const fetchAllCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
@@ -693,13 +703,17 @@ export const updateDailyTaskStatus = async (
 
 
 // services/api.ts
-export const claimReferralEarnings = async (): Promise<{
+export const claimReferralEarnings = async (userId: number): Promise<{
   success: boolean;
   message: string;
   user?: User;
 }> => {
   return apiFetch('/api/referral/claim', {
     method: 'POST',
+    body: JSON.stringify({ userId }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
 };
 
@@ -730,10 +744,32 @@ export const getReferralInfo = async (userId: number): Promise<{
   total_earnings: number;
   today_invites: number;
   max_daily_invites: number;
+  spins_awarded?: number;
 }> => {
-  return apiFetch(`/api/referral/info?user_id=${userId}`);
+  const response = await apiFetch(`/api/referral/info?user_id=${userId}`);
+  
+  // If the response has success: true, extract the data
+  if (response.success && response.referral_code) {
+    return response;
+  }
+  
+  // If the data is at the root level (without success wrapper), return directly
+  if (response.referral_code) {
+    return response;
+  }
+  
+  // Fallback: return empty data structure
+  return {
+    referral_code: userId.toString(),
+    referral_link: `https://t.me/CashUBux_bot?startapp=ref_${userId}`,
+    referral_count: 0,
+    claimable_earnings: 0,
+    total_earnings: 0,
+    today_invites: 0,
+    max_daily_invites: 50,
+    spins_awarded: 0
+  };
 };
-
 
 
 

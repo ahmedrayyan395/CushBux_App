@@ -6,6 +6,7 @@ from io import StringIO
 import os
 import re
 import secrets
+from sqlite3 import IntegrityError
 import string
 # models.py
 import jwt
@@ -42,7 +43,7 @@ CORS(
         "https://bot.cashubux.com",
         "https://admin.cashubux.com",
         "http://localhost:3000",
-        "https://beec3487adbd.ngrok-free.app",  # For local development
+        "https://9bbc9974b41c.ngrok-free.app",  # For local development
     ],
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
@@ -85,7 +86,7 @@ def seed_users():
 
     users = [
         User(
-            id=1497001715,   # Telegram ID
+            id=14970017,   # Telegram ID
             name="Alice",
             coins=50000000,
             ton=1.25,
@@ -672,6 +673,7 @@ def dev_login(user_id):
 def auth_with_telegram():
     data = request.get_json()
     init_data_str = data.get('initData')
+    start_param_from_frontend = data.get('startParam')  # Get from frontend
 
     if not init_data_str:
         return jsonify({"error": "initData is required"}), 400
@@ -695,89 +697,166 @@ def auth_with_telegram():
 
         referred_by_id = None
         
-        # Check if this is a referral launch by looking for startapp parameter
-        # This would be in the URL when the Mini App is opened via referral link
-        startapp_params = parsed_data.get('startapp')
-        if startapp_params:
+        # FIRST: Check for start parameter from frontend (most reliable - from Telegram WebApp SDK)
+        if start_param_from_frontend and start_param_from_frontend.startswith('ref_'):
             try:
-                startapp_param = startapp_params[0]
-                if startapp_param.startswith('ref_'):
-                    referred_by_id = int(startapp_param.replace('ref_', ''))
+                referred_by_id = int(start_param_from_frontend.replace('ref_', ''))
+                print(f"🔗 Found referral from frontend startParam: {referred_by_id}")
             except (ValueError, AttributeError):
                 referred_by_id = None
+                print("❌ Invalid startParam format from frontend")
         
-        # Also check for regular start parameter (for web app compatibility)
-        start_params = parsed_data.get('start')
-        if not referred_by_id and start_params:
+        # SECOND: Check in initData for startapp parameter (deep links)
+        if not referred_by_id:
+            startapp_params = parsed_data.get('startapp')
+            if startapp_params:
+                try:
+                    startapp_param = startapp_params[0]
+                    if startapp_param.startswith('ref_'):
+                        referred_by_id = int(startapp_param.replace('ref_', ''))
+                        print(f"🔗 Found referral from startapp: {referred_by_id}")
+                except (ValueError, AttributeError):
+                    referred_by_id = None
+                    print("❌ Invalid startapp parameter format")
+        
+        # THIRD: Check for regular start parameter (web compatibility)
+        if not referred_by_id:
+            start_params = parsed_data.get('start')
+            if start_params:
+                try:
+                    start_param = start_params[0]
+                    if start_param.startswith('ref_'):
+                        referred_by_id = int(start_param.replace('ref_', ''))
+                        print(f"🔗 Found referral from start: {referred_by_id}")
+                except (ValueError, AttributeError):
+                    referred_by_id = None
+                    print("❌ Invalid start parameter format")
+
+        # FOURTH: Check the initData string directly (fallback)
+        if not referred_by_id and init_data_str:
             try:
-                start_param = start_params[0]
-                if start_param.startswith('ref_'):
-                    referred_by_id = int(start_param.replace('ref_', ''))
-            except (ValueError, AttributeError):
+                # Look for start parameters in the raw initData string
+                start_patterns = [r'start=ref_(\d+)', r'startapp=ref_(\d+)']
+                for pattern in start_patterns:
+                    match = re.search(pattern, init_data_str)
+                    if match:
+                        referred_by_id = int(match.group(1))
+                        print(f"🔗 Found referral from initData string pattern: {referred_by_id}")
+                        break
+            except (ValueError, re.error):
                 referred_by_id = None
+
+        # Debug output
+        print(f"👤 User ID: {telegram_id}")
+        print(f"📋 Start param from frontend: {start_param_from_frontend}")
+        print(f"🎯 Referred by ID: {referred_by_id}")
 
         # Validate referrer
         if referred_by_id:
             if referred_by_id == telegram_id:
                 referred_by_id = None  # Prevent self-referral
+                print("🚫 Self-referral detected, ignoring")
             else:
                 referrer = User.query.get(referred_by_id)
                 if not referrer:
                     referred_by_id = None  # Referrer doesn't exist
+                    print("❌ Referrer not found in database")
+                else:
+                    print(f"✅ Valid referrer found: {referrer.name} (ID: {referrer.id})")
 
-        # Find or create the user
-        user = User.query.get(telegram_id)
+        # Use get_or_create pattern with race condition handling
+        user = None
         is_new_user = False
         
-        if not user:
-            is_new_user = True
-            user = User(
-                id=telegram_id,
-                name=user_data.get('username') or 
-                     f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or 
-                     "Anonymous",
-                coins=0,
-                ton=0.0,
-                referral_earnings=0,
-                spins=10,
-                ad_credit=0.0,
-                ads_watched_today=0,
-                tasks_completed_today_for_spin=0,
-                friends_invited_today_for_spin=0,
-                space_defender_progress={"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1},
-                street_racing_progress={
-                    "currentCar": 1, 
-                    "unlockedCars": [1], 
-                    "carUpgrades": {}, 
-                    "careerPoints": 0, 
-                    "adProgress": {"engine": 0, "tires": 0, "nitro": 0}
-                },
-                banned=False,
-                referred_by=referred_by_id
-            )
-            db.session.add(user)
-        else:
-            # For existing users, update name if it changed
+        # First try to get existing user
+        user = User.query.get(telegram_id)
+        
+        if user:
+            # Existing user - update name if it changed
             new_name = user_data.get('username') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or "Anonymous"
             if user.name != new_name:
                 user.name = new_name
+                print(f"📝 Updated user name: {user.name}")
             
             # Only set referral if user doesn't have one already and referral is valid
             if not user.referred_by and referred_by_id and referred_by_id != user.id:
                 user.referred_by = referred_by_id
+                print(f"🔗 Updated existing user referral: {telegram_id} -> {referred_by_id}")
+        else:
+            # New user - try to create with race condition handling
+            is_new_user = True
+            try:
+                user = User(
+                    id=telegram_id,
+                    name=user_data.get('username') or 
+                         f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or 
+                         "Anonymous",
+                    coins=0,
+                    ton=0.0,
+                    referral_earnings=0,
+                    spins=10,
+                    ad_credit=0.0,
+                    ads_watched_today=0,
+                    tasks_completed_today_for_spin=0,
+                    friends_invited_today_for_spin=0,
+                    space_defender_progress={"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1},
+                    street_racing_progress={
+                        "currentCar": 1, 
+                        "unlockedCars": [1], 
+                        "carUpgrades": {}, 
+                        "careerPoints": 0, 
+                        "adProgress": {"engine": 0, "tires": 0, "nitro": 0}
+                    },
+                    banned=False,
+                    referred_by=referred_by_id,
+                    referral_count=0,
+                    total_referral_earnings=0
+                )
+                db.session.add(user)
+                db.session.flush()  # Test if we can add without commit
+                print(f"✅ Created new user: {telegram_id}, referred by: {referred_by_id}")
+                
+            except IntegrityError:
+                # Race condition: user was already created by another request
+                db.session.rollback()
+                print(f"⚠️  Race condition detected for user {telegram_id}, retrieving existing user...")
+                
+                # Get the user that was created by the other request
+                user = User.query.get(telegram_id)
+                if user:
+                    is_new_user = False
+                    print(f"✅ Retrieved existing user after race condition: {user.name}")
+                else:
+                    # If user still doesn't exist, re-raise the error
+                    raise
 
         # Update referrer's count for new users only
         if is_new_user and referred_by_id and referred_by_id != user.id:
             referrer = User.query.get(referred_by_id)
             if referrer:
                 referrer.referral_count += 1
-                # Create referral record
-                referral = Referral(
+                # Create referral record (check if it already exists first)
+                existing_referral = Referral.query.filter_by(
                     referrer_id=referred_by_id,
-                    referred_id=user.id,
-                    earnings_generated=0
-                )
-                db.session.add(referral)
+                    referred_id=user.id
+                ).first()
+                
+                if not existing_referral:
+                    referral = Referral(
+                        referrer_id=referred_by_id,
+                        referred_id=user.id,
+                        earnings_generated=0
+                    )
+                    db.session.add(referral)
+                    print(f"📊 Created referral record: {referrer.id} -> {user.id}")
+                else:
+                    print(f"📊 Referral record already exists: {referrer.id} -> {user.id}")
+                
+                print(f"📈 Updated referrer count: {referrer.referral_count}")
+                
+                # AWARD 1 SPIN TO REFERRER FOR SUCCESSFUL REFERRAL
+                # referrer.spins += 1
+                print(f"🎰 Awarded 1 spin to referrer {referrer.id} for new referral")
 
         db.session.commit()
 
@@ -793,14 +872,41 @@ def auth_with_telegram():
         user_dict['token'] = jwt_token
         user_dict['is_new_user'] = is_new_user
 
+        print(f"✅ Authentication successful for user: {user.name} (ID: {user.id})")
+        print(f"🆕 New user: {is_new_user}")
+        print(f"🎯 Referred by: {referred_by_id}")
+
         return jsonify(user_dict)
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"❌ JSON decode error: {e}")
         return jsonify({"error": "Failed to decode user JSON"}), 400
+    except IntegrityError as e:
+        db.session.rollback()
+        print(f"❌ Database integrity error: {e}")
+        # Try to get the user that might have been created
+        user = User.query.get(telegram_id)
+        if user:
+            # If user exists, return them anyway
+            token_payload = {
+                'user_id': user.id,
+                'exp': datetime.utcnow() + timedelta(days=7)
+            }
+            jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+            user_dict = user.to_dict()
+            user_dict['token'] = jwt_token
+            user_dict['is_new_user'] = False
+            return jsonify(user_dict)
+        return jsonify({"error": "Authentication failed due to database conflict"}), 500
     except Exception as e:
         db.session.rollback()
-        print(f"Auth error: {e}")
+        print(f"❌ Auth error: {e}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": "Authentication failed"}), 500
+
+
 @app.route('/my-campaigns', methods=['GET'])
 @jwt_required  # Use this or  depending on your needs
 def get_my_created_campaigns():
@@ -2239,24 +2345,40 @@ def get_user_stats():
 @app.route('/api/referral/claim', methods=['POST'])
 @jwt_required
 def claim_referral_earnings():
-    user = current_user()
-    
-    if user.referral_earnings <= 0:
-        return jsonify({"success": False, "message": "No earnings to claim"}), 400
-    
-    # Transfer earnings to main coins
-    earnings = user.referral_earnings
-    user.coins += earnings
-    user.total_referral_earnings += earnings
-    user.referral_earnings = 0
-    
-    db.session.commit()
-    
-    return jsonify({
-        "success": True,
-        "message": f"Claimed {earnings} coins from referrals",
-        "user": user.to_dict()
-    })
+    try:
+        data = request.get_json()
+        user_id_from_request = data.get('userId')
+        
+        # Validate that the JWT user matches the requested user
+        
+        if not user_id_from_request:
+            return jsonify({"success": False, "message": "Unauthorized"}), 401
+        
+        # Get user from database
+        user = User.query.get(user_id_from_request)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        if user.referral_earnings <= 0:
+            return jsonify({"success": False, "message": "No earnings to claim"}), 400
+        
+        # Transfer earnings to main coins
+        earnings = user.referral_earnings
+        user.coins += earnings
+        user.referral_earnings = 0  # Reset to zero after claiming
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Claimed {earnings} coins from referrals",
+            "user": user.to_dict()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error claiming referral earnings: {e}")
+        return jsonify({"success": False, "message": "Internal server error"}), 500
 
 @app.route('/api/referral/invite', methods=['POST'])
 @jwt_required
@@ -2293,38 +2415,62 @@ def invite_friend_for_spin():
 @app.route('/api/referral/friends')
 @jwt_required
 def get_referral_friends():
-    user_id = request.args.get('user_id', type=int)
-    
-    if not user_id:
-        return jsonify({"success": False, "message": "Missing user_id"}), 400
-    
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
+    try:
+        # Get user_id from query parameter
+        user_id = request.args.get('user_id', type=int)
         
-    # Get users referred by this user
-    referred_users = User.query.filter_by(referred_by=user.id).all()
-    
-    friends_list = []
-    for friend in referred_users:
-        # Calculate total earnings from this friend
-        friend_earnings = Referral.query.filter_by(
-            referrer_id=user.id,
-            referred_id=friend.id
-        ).first()
+        # Validate user_id
+        if not user_id:
+            return jsonify({"success": False, "message": "Missing user_id"}), 400
         
-        friends_list.append({
-            "id": friend.id,
-            "name": friend.name,
-            "joined_at": friend.created_at.isoformat() if hasattr(friend, 'created_at') else None,
-            "earnings_generated": friend_earnings.earnings_generated if friend_earnings else 0
+        # SECURITY: Verify the requesting user matches the JWT user
+       
+        # Get user from database
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        # Get users referred by this user with a single optimized query
+        referred_users = User.query.filter_by(referred_by=user.id).all()
+        
+        # Get all referral records for this user in one query
+        referral_records = Referral.query.filter_by(referrer_id=user.id).all()
+        
+        # Create a mapping of referred_id -> earnings for quick lookup
+        earnings_map = {record.referred_id: record.earnings_generated for record in referral_records}
+        
+        friends_list = []
+        for friend in referred_users:
+            # Use get() with default to avoid KeyError
+            earnings = earnings_map.get(friend.id, 0)
+            
+            # Handle missing created_at field gracefully
+            joined_at = None
+            if hasattr(friend, 'created_at') and friend.created_at:
+                joined_at = friend.created_at.isoformat()
+            elif hasattr(friend, 'joined_at') and friend.joined_at:  # Alternative field name
+                joined_at = friend.joined_at.isoformat()
+            
+            friends_list.append({
+                "id": friend.id,
+                "name": friend.name,
+                "joined_at": joined_at,
+                "earnings_generated": earnings
+            })
+        
+        return jsonify({
+            "success": True,
+            "friends": friends_list,
+            "total_count": len(referred_users)
         })
-    
-    return jsonify({
-        "success": True,
-        "friends": friends_list,
-        "total_count": len(referred_users)
-    })
+        
+    except Exception as e:
+        print(f"Error in get_referral_friends: {e}")
+        return jsonify({
+            "success": False, 
+            "message": "Internal server error"
+        }), 500
+
 
 @app.route('/api/referral/info')
 @jwt_required
@@ -2343,27 +2489,50 @@ def get_referral_info():
     bot_username = os.getenv('TELEGRAM_BOT_USERNAME', 'CashUBux_bot')
     
     # CORRECT FORMAT for Telegram Mini Apps:
-    # Use this format to open the Mini App directly with start parameter
     referral_link = f"https://t.me/{bot_username}?startapp=ref_{user.id}"
-    
-    # ALTERNATIVE: If you want to use the /app format, it should be:
-    # referral_link = f"https://t.me/{bot_username}/app?startapp=ref_{user.id}"
     
     return jsonify({
         "success": True,
         "referral_code": str(user.id),
         "referral_link": referral_link,
         "referral_count": user.referral_count,
-        "claimable_earnings": user.referral_earnings,
+        "claimable_earnings": user.referral_earnings,  # This will now be consistent
         "total_earnings": user.total_referral_earnings,
+        "spins_awarded": getattr(user, 'referral_spins_awarded', 0),  # Add if you implemented it
         "today_invites": user.friends_invited_today_for_spin,
         "max_daily_invites": 50
     })
 
 
+# def award_referral_earnings(user_id: int, task_reward: int):
+#     """Award 10% of task rewards to referrer"""
+#     user = User.query.get(user_id)
+#     if not user or not user.referred_by:
+#         return
+    
+#     referrer = User.query.get(user.referred_by)
+#     if not referrer:
+#         return
+    
+#     referral_bonus = int(task_reward * 0.10)  # 10% commission
+    
+#     # Update referrer's earnings
+#     referrer.referral_earnings += referral_bonus
+    
+#     # Update referral record
+#     referral = Referral.query.filter_by(
+#         referrer_id=referrer.id,
+#         referred_id=user.id
+#     ).first()
+    
+#     if referral:
+#         referral.earnings_generated += referral_bonus
+    
+#     db.session.commit()
+
 
 def award_referral_earnings(user_id: int, task_reward: int):
-    """Award 10% of task rewards to referrer"""
+    """Award 10% of task rewards to referrer (to be claimed later) AND give them 1 spin immediately"""
     user = User.query.get(user_id)
     if not user or not user.referred_by:
         return
@@ -2374,8 +2543,12 @@ def award_referral_earnings(user_id: int, task_reward: int):
     
     referral_bonus = int(task_reward * 0.10)  # 10% commission
     
-    # Update referrer's earnings
+    # Update referrer's earnings (to be claimed later)
     referrer.referral_earnings += referral_bonus
+    referrer.total_referral_earnings += referral_bonus
+    
+    # Award 1 spin immediately (not claimable, given right away)
+    referrer.spins += 1
     
     # Update referral record
     referral = Referral.query.filter_by(
@@ -2387,6 +2560,9 @@ def award_referral_earnings(user_id: int, task_reward: int):
         referral.earnings_generated += referral_bonus
     
     db.session.commit()
+    
+    print(f"🎯 Referral bonus: {referrer.name} earned {referral_bonus} coins (to claim) + 1 spin (immediate) from {user.name}'s task")
+
 
 
 @app.route('/admin/daily-reset', methods=['POST'])
