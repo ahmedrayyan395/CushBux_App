@@ -85,6 +85,94 @@ export const ICONS = {
 };
 
 
+// constants/index.ts
+export const SPIN_WHEEL_PRIZES = [
+  {
+    label: "100 Coins",
+    value: 100,
+    type: "coins",
+    color: "linear-gradient(135deg, #FFD700, #FFA500)",
+    textColor: "#000"
+  },
+  {
+    label: "250 Coins",
+    value: 250,
+    type: "coins",
+    color: "linear-gradient(135deg, #FFB347, #FFCC33)",
+    textColor: "#000"
+  },
+  {
+    label: "500 Coins",
+    value: 500,
+    type: "coins",
+    color: "linear-gradient(135deg, #FFD700, #FF8C00)",
+    textColor: "#000"
+  },
+  {
+    label: "1000 Coins",
+    value: 1000,
+    type: "coins",
+    color: "linear-gradient(135deg, #FFA500, #FF4500)",
+    textColor: "#fff"
+  },
+  {
+    label: "1 Spin",
+    value: 1,
+    type: "spins",
+    color: "linear-gradient(135deg, #00FF00, #32CD32)",
+    textColor: "#000"
+  },
+  {
+    label: "2 Spins",
+    value: 2,
+    type: "spins",
+    color: "linear-gradient(135deg, #32CD32, #228B22)",
+    textColor: "#fff"
+  },
+  {
+    label: "5 Spins",
+    value: 5,
+    type: "spins",
+    color: "linear-gradient(135deg, #228B22, #006400)",
+    textColor: "#fff"
+  },
+  {
+    label: "0.001 TON",
+    value: 0.001,
+    type: "ton",
+    color: "linear-gradient(135deg, #0099FF, #0066CC)",
+    textColor: "#fff"
+  },
+  {
+    label: "0.005 TON",
+    value: 0.005,
+    type: "ton",
+    color: "linear-gradient(135deg, #0066CC, #004499)",
+    textColor: "#fff"
+  },
+  {
+    label: "0.01 TON",
+    value: 0.01,
+    type: "ton",
+    color: "linear-gradient(135deg, #004499, #002266)",
+    textColor: "#fff"
+  },
+  {
+    label: "Better luck!",
+    value: 0,
+    type: "none",
+    color: "linear-gradient(135deg, #888888, #555555)",
+    textColor: "#fff"
+  },
+  {
+    label: "Jackpot!",
+    value: 2000,
+    type: "coins",
+    color: "linear-gradient(135deg, #FF0000, #FF4500)",
+    textColor: "#fff"
+  }
+];
+
 
 export const INITIAL_USER: User = {
   id: 1,
@@ -215,6 +303,7 @@ export const MOCK_PROMO_CODES: PromoCode[] = [
 ];
 
 export const CONVERSION_RATE = 1000000;
+export const MIN_WITHDRAWAL_TON=1.1;
 export const RECIPIENT_WALLET_ADDRESS = 'UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAD'; // Placeholder address
 
 
@@ -223,16 +312,16 @@ export const RECIPIENT_WALLET_ADDRESS = 'UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 // This eliminates the risk of incorrect prize distribution and crediting failures.
 
 
-export const SPIN_WHEEL_PRIZES = [
-    { type: 'COINS', value: 100,  weight: 40, label: '100' },   // ~32.0% chance
-    { type: 'COINS', value: 50,   weight: 25, label: '50' },    // ~20.0% chance
-    { type: 'COINS', value: 500,  weight: 10, label: '500' },   // ~8.0% chance
-    { type: 'COINS', value: 1000, weight: 5,  label: '1K' },    // ~4.0% chance
-    { type: 'COINS', value: 250,  weight: 15, label: '250' },   // ~12.0% chance
-    { type: 'COINS', value: 2500, weight: 3,  label: '2.5K' },  // ~2.4% chance
-    { type: 'COINS', value: 5000, weight: 1,  label: '5K' },    // ~0.8% chance
-    { type: 'COINS', value: 75,   weight: 25, label: '75' }     // ~20.0% chance
-];
+// export const SPIN_WHEEL_PRIZES = [
+//     { type: 'COINS', value: 100,  weight: 40, label: '100' },   // ~32.0% chance
+//     { type: 'COINS', value: 50,   weight: 25, label: '50' },    // ~20.0% chance
+//     { type: 'COINS', value: 500,  weight: 10, label: '500' },   // ~8.0% chance
+//     { type: 'COINS', value: 1000, weight: 5,  label: '1K' },    // ~4.0% chance
+//     { type: 'COINS', value: 250,  weight: 15, label: '250' },   // ~12.0% chance
+//     { type: 'COINS', value: 2500, weight: 3,  label: '2.5K' },  // ~2.4% chance
+//     { type: 'COINS', value: 5000, weight: 1,  label: '5K' },    // ~0.8% chance
+//     { type: 'COINS', value: 75,   weight: 25, label: '75' }     // ~20.0% chance
+// ];
 
 
 export const SPIN_STORE_PACKAGES = [

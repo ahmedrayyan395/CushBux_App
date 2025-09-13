@@ -4,7 +4,9 @@ from decimal import Decimal
 import enum
 from io import StringIO
 import os
+import random
 import re
+
 import secrets
 from sqlite3 import IntegrityError
 import string
@@ -89,7 +91,22 @@ def seed_users():
             id=14970017,   # Telegram ID
             name="Alice",
             coins=50000000,
-            ton=1.25,
+            ton=555,
+            referral_earnings=0,
+            spins=5,
+            ad_credit=200.0,
+            ads_watched_today=2,
+            tasks_completed_today_for_spin=1,
+            friends_invited_today_for_spin=0,
+            space_defender_progress={"weaponLevel": 2, "shieldLevel": 1, "speedLevel": 1},
+            street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
+            banned=False
+        ),
+        User(
+            id=1497001715,   # Telegram ID
+            name="Alice",
+            coins=50000000,
+            ton=125,
             referral_earnings=0,
             spins=5,
             ad_credit=200.0,
@@ -442,23 +459,22 @@ class UserQuestProgress(db.Model):
     user = db.relationship('User', backref='quest_progress')
     quest = db.relationship('Quest', backref='user_progress')
 
+# models.py
+# models.py
 class Transaction(db.Model):
     __tablename__ = 'transactions'
     
-    id = db.Column(db.String, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    
-    type = db.Column(db.Enum(TransactionType), nullable=False)
     amount = db.Column(db.Numeric(20, 9), nullable=False)
+    transaction_type = db.Column(db.Enum(TransactionType), nullable=False)
     currency = db.Column(db.Enum(TransactionCurrency), nullable=False)
-    date = db.Column(db.TIMESTAMP, server_default=func.now())
-    status = db.Column(db.Enum(TransactionStatus), nullable=False)
+    status = db.Column(db.Enum(TransactionStatus), nullable=False, default=TransactionStatus.COMPLETED)
+    description = db.Column(db.String(255))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    user = db.relationship('User', backref='transactions')
-
-
-
-
+    # Relationship
+    user = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
 
 
 class PromoCode(db.Model):
@@ -497,6 +513,25 @@ class AdminUser(db.Model):
     username = db.Column(db.String, unique=True, nullable=False)
     password_hash = db.Column(db.String, nullable=False)
     permissions = db.Column(JSON, nullable=False) # e.g., ["MANAGE_USERS", "CREATE_TASKS"]
+
+
+
+# Add this to your models.py
+
+class SpinHistory(db.Model):
+    __tablename__ = 'spin_history'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    prize_type = db.Column(db.String(20), nullable=False)  # coins, spins, ton, none
+    prize_value = db.Column(db.Numeric(20, 9), nullable=False, default=0)
+    prize_label = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    user = db.relationship('User', backref=db.backref('spin_history', lazy='dynamic'))
+
+
 
 
 # IMPORTANT: This function needs to be updated to use sessions
@@ -835,6 +870,13 @@ def auth_with_telegram():
             referrer = User.query.get(referred_by_id)
             if referrer:
                 referrer.referral_count += 1
+                
+                # AWARD 1 SPIN TO REFERRER FOR SUCCESSFUL REFERRAL
+                referrer.spins += 1
+                
+                # INCREASE FRIEND INVITATION COUNT FOR TODAY
+                referrer.friends_invited_today_for_spin += 1
+                
                 # Create referral record (check if it already exists first)
                 existing_referral = Referral.query.filter_by(
                     referrer_id=referred_by_id,
@@ -853,10 +895,8 @@ def auth_with_telegram():
                     print(f"📊 Referral record already exists: {referrer.id} -> {user.id}")
                 
                 print(f"📈 Updated referrer count: {referrer.referral_count}")
-                
-                # AWARD 1 SPIN TO REFERRER FOR SUCCESSFUL REFERRAL
-                # referrer.spins += 1
                 print(f"🎰 Awarded 1 spin to referrer {referrer.id} for new referral")
+                print(f"👥 Increased friend invitation count for today: {referrer.friends_invited_today_for_spin}")
 
         db.session.commit()
 
@@ -905,7 +945,6 @@ def auth_with_telegram():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Authentication failed"}), 500
-
 
 @app.route('/my-campaigns', methods=['GET'])
 @jwt_required  # Use this or  depending on your needs
@@ -1324,6 +1363,8 @@ def claim_task():
     CONVERSION_RATE = 1000000
     reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
     user.coins += reward
+    user.tasks_completed_today_for_spin+=1
+    user.spins+=1
 
     award_referral_earnings(user.id, reward)
 
@@ -2263,7 +2304,7 @@ def export_users():
                     user.id,
                     user.name,
                     user.coins,
-                    float(user.ton),
+                    float(user.ad_credit),
                     user.referral_earnings,
                     user.spins,
                     float(user.ad_credit),
@@ -2313,12 +2354,12 @@ def get_user_stats():
         
         # Get currency totals
         total_coins = db.session.query(func.sum(User.coins)).scalar() or 0
-        total_ton = db.session.query(func.sum(User.ton)).scalar() or 0
+        total_ton = db.session.query(func.sum(User.ad_credit)).scalar() or 0
         total_spins = db.session.query(func.sum(User.spins)).scalar() or 0
         
         # Get average values
         avg_coins = db.session.query(func.avg(User.coins)).scalar() or 0
-        avg_ton = db.session.query(func.avg(User.ton)).scalar() or 0
+        avg_ton = db.session.query(func.avg(User.ad_credit)).scalar() or 0
         
         return jsonify({
             "total_users": total_users,
@@ -2401,8 +2442,8 @@ def invite_friend_for_spin():
         }), 400
     
     # Award spin for sharing
-    user.spins += 1
-    user.friends_invited_today_for_spin += 1
+    # user.spins += 1
+    # user.friends_invited_today_for_spin += 1
     
     db.session.commit()
     
@@ -2711,3 +2752,369 @@ def deposit_ad_credit():
 #             "success": False,
 #             "message": "Deposit failed"
 #         }), 500        
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Add these endpoints to your app.py
+
+@app.route('/api/spin', methods=['POST'])
+@jwt_required
+def spin_wheel():
+    """Handle wheel spin and award prizes"""
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        
+        if not user_id:
+            return jsonify({"success": False, "message": "User ID required"}), 400
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        # Check if user has spins
+        if user.spins <= 0:
+            return jsonify({
+                "success": False, 
+                "message": "No spins left", 
+                "prize": {"label": "No spins", "value": 0, "type": "coins"}
+            }), 400
+        
+        # Deduct spin
+        user.spins -= 1
+        
+        # Determine prize (weighted random)
+        prizes = [
+            {"label": "100 Coins", "value": 100, "type": "coins", "weight": 30},
+            {"label": "250 Coins", "value": 250, "type": "coins", "weight": 20},
+            {"label": "500 Coins", "value": 500, "type": "coins", "weight": 10},
+            {"label": "1000 Coins", "value": 1000, "type": "coins", "weight": 5},
+            {"label": "1 Spin", "value": 1, "type": "spins", "weight": 15},
+            {"label": "2 Spins", "value": 2, "type": "spins", "weight": 8},
+            {"label": "5 Spins", "value": 5, "type": "spins", "weight": 2},
+            {"label": "0.001 TON", "value": 0.001, "type": "ton", "weight": 5},
+            {"label": "0.005 TON", "value": 0.005, "type": "ton", "weight": 3},
+            {"label": "0.01 TON", "value": 0.01, "type": "ton", "weight": 1},
+            {"label": "Better luck next time!", "value": 0, "type": "none", "weight": 5}
+        ]
+        
+        # Weighted random selection
+        total_weight = sum(prize["weight"] for prize in prizes)
+        random_value = random.uniform(0, total_weight)
+        current_weight = 0
+        
+        selected_prize = None
+        for prize in prizes:
+            current_weight += prize["weight"]
+            if random_value <= current_weight:
+                selected_prize = prize
+                break
+        
+        # Award prize
+        if selected_prize["type"] == "coins":
+            user.coins += selected_prize["value"]
+        elif selected_prize["type"] == "spins":
+            user.spins += selected_prize["value"]
+        elif selected_prize["type"] == "ton":
+            user.ad_credit += Decimal(selected_prize["value"])
+        
+        # Record spin history
+        spin_record = SpinHistory(
+            user_id=user.id,
+            prize_type=selected_prize["type"],
+            prize_value=selected_prize["value"],
+            prize_label=selected_prize["label"]
+        )
+        db.session.add(spin_record)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "prize": selected_prize,
+            "user": user.to_dict(),
+            "message": f"Congratulations! You won {selected_prize['label']}"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Spin error: {e}")
+        return jsonify({"success": False, "message": "Spin failed"}), 500
+
+@app.route('/api/spin/watch-ad', methods=['POST'])
+@jwt_required
+def watch_ad_for_spin():
+    """Handle ad watching for spin rewards"""
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        
+        if not user_id:
+            return jsonify({"success": False, "message": "User ID required"}), 400
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        # Check daily limit
+        if user.ads_watched_today >= 50:
+            return jsonify({
+                "success": False, 
+                "message": "Daily ad limit reached (50 per day)"
+            }), 400
+        
+        # Award spin for watching ad
+        user.spins += 1
+        user.ads_watched_today += 1
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Thanks for watching! +1 Spin!",
+            "user": user.to_dict()
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Ad watch error: {e}")
+        return jsonify({"success": False, "message": "Failed to process ad"}), 500
+
+
+
+
+
+
+
+@app.route('/api/spin/history')
+@jwt_required
+def get_spin_history():
+    """Get user's spin history"""
+    try:
+        user_id = request.args.get('userId', type=int)
+        limit = request.args.get('limit', 20, type=int)
+        
+        if not user_id:
+            return jsonify({"success": False, "message": "User ID required"}), 400
+        
+        # Get spin history with pagination
+        spin_history = SpinHistory.query.filter_by(user_id=user_id)\
+            .order_by(SpinHistory.created_at.desc())\
+            .limit(limit)\
+            .all()
+        
+        history_list = [{
+            "prize_label": spin.prize_label,
+            "prize_type": spin.prize_type,
+            "prize_value": spin.prize_value,
+            "created_at": spin.created_at.isoformat()
+        } for spin in spin_history]
+        
+        return jsonify({
+            "success": True,
+            "history": history_list,
+            "total": len(history_list)
+        })
+        
+    except Exception as e:
+        print(f"Spin history error: {e}")
+        return jsonify({"success": False, "message": "Failed to get spin history"}), 500
+
+
+
+
+
+# Add these constants to your app.py or config.py
+
+# Spin store packages
+SPIN_STORE_PACKAGES = [
+    {"id": "sp10", "spins": 10, "costTon": 0.02},
+    {"id": "sp50", "spins": 50, "costTon": 0.1},
+    {"id": "sp100", "spins": 100, "costTon": 0.2},
+    {"id": "sp500", "spins": 500, "costTon": 1.0},
+    {"id": "sp1000", "spins": 1000, "costTon": 2.0},
+    {"id": "sp5000", "spins": 5000, "costTon": 10.0},
+    {"id": "sp10000", "spins": 10000, "costTon": 20.0},
+    {"id": "sp50000", "spins": 50000, "costTon": 100.0}
+]
+
+
+# Conversion rate (coins to TON)
+CONVERSION_RATE = 1000000  # 1 TON = 1,000,000 coins
+
+# Recipient wallet address from environment
+RECIPIENT_WALLET_ADDRESS = os.getenv('RECIPIENT_WALLET_ADDRESS')        
+
+@app.route('/api/spin/buy', methods=['POST'])
+@jwt_required
+def buy_spins():
+    """Purchase spins using coins, in-app TON, or blockchain TON"""
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        package_id = data.get('packageId')
+        payment_method = data.get('paymentMethod')
+        transaction_hash = data.get('transactionHash')  # For blockchain transactions
+        
+        if not user_id or not package_id or not payment_method:
+            return jsonify({"success": False, "message": "Missing parameters"}), 400
+        
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+        
+        spin_package = next((pkg for pkg in SPIN_STORE_PACKAGES if pkg['id'] == package_id), None)
+        if not spin_package:
+            return jsonify({"success": False, "message": "Invalid package"}), 400
+        
+        transactions = []  # List to store multiple transaction records
+        message = ""
+        spins_to_add = spin_package['spins']
+        
+        if payment_method == 'COINS':
+            cost_in_coins = spin_package['costTon'] * CONVERSION_RATE
+            
+            if user.coins < cost_in_coins:
+                return jsonify({"success": False, "message": "Insufficient coins"}), 400
+            
+            user.coins -= cost_in_coins
+            
+            # Transaction for coins spent
+            transactions.append(Transaction(
+                user_id=user.id,
+                amount=Decimal(-cost_in_coins),
+                transaction_type=TransactionType.WITHDRAWAL,
+                currency=TransactionCurrency.COINS,
+                status=TransactionStatus.COMPLETED,
+                description=f"Spent on {spin_package['spins']} spins"
+            ))
+            
+            message = f"Purchased {spins_to_add} spins for {cost_in_coins:,} coins"
+            
+        elif payment_method == 'TON':
+            cost_in_ton = Decimal(str(spin_package['costTon']))
+            
+            if user.ad_credit< cost_in_ton:
+                return jsonify({"success": False, "message": "Insufficient TON balance"}), 400
+            
+            user.ad_credit -= cost_in_ton
+            
+            # Transaction for TON spent
+            transactions.append(Transaction(
+                user_id=user.id,
+                amount=Decimal(-cost_in_ton),
+                transaction_type=TransactionType.WITHDRAWAL,
+                currency=TransactionCurrency.TON,
+                status=TransactionStatus.COMPLETED,
+                description=f"Spent on {spin_package['spins']} spins"
+            ))
+            
+            message = f"Purchased {spins_to_add} spins for {spin_package['costTon']} TON"
+            
+        elif payment_method == 'TON_BLOCKCHAIN':
+            # For blockchain transactions, add bonus
+            bonus_spins = int(spin_package['spins'] * 0.1)
+            spins_to_add += bonus_spins
+            
+            # Transaction for blockchain payment (optional - you might track this separately)
+            if transaction_hash:
+                transactions.append(Transaction(
+                    user_id=user.id,
+                    amount=Decimal(-spin_package['costTon']),
+                    transaction_type=TransactionType.WITHDRAWAL,
+                    currency=TransactionCurrency.TON,
+                    status=TransactionStatus.COMPLETED,
+                    description=f"Blockchain payment for spins - Hash: {transaction_hash}"
+                ))
+            
+            message = f"Purchased {spin_package['spins']} spins + {bonus_spins} bonus via blockchain"
+            
+        else:
+            return jsonify({"success": False, "message": "Invalid payment method"}), 400
+        
+        # Add spins to user
+        user.spins += spins_to_add
+        
+        # Transaction for spins received
+        transactions.append(Transaction(
+            user_id=user.id,
+            amount=Decimal(spins_to_add),
+            transaction_type=TransactionType.DEPOSIT,
+            currency=TransactionCurrency.COINS,  # Spins are tracked as coins equivalent
+            status=TransactionStatus.COMPLETED,
+            description=f"Received {spins_to_add} spins purchase"
+        ))
+        
+        # Add all transactions to session
+        for transaction in transactions:
+            db.session.add(transaction)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": message,
+            "user": user.to_dict(),
+            "transaction_ids": [t.id for t in transactions]
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Spin purchase error: {e}")
+        return jsonify({"success": False, "message": "Purchase failed"}), 500
+
+
+
+@app.route('/api/withdraw/ton', methods=['POST'])
+@jwt_required
+def withdraw_ton():
+    data = request.get_json()
+    amount = data.get("amount")
+    transaction_hash = data.get("transactionHash")
+    user_id = data.get("userId")
+
+    if not user_id:
+        return jsonify({"success": False, "message": "Missing userId"}), 400
+
+    # Look up user by ID
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    if amount is None or amount <= 0:
+        return jsonify({"success": False, "message": "Invalid withdrawal amount"}), 400
+
+    if user.ton < amount:
+        return jsonify({"success": False, "message": "Insufficient TON balance"}), 400
+
+    # Deduct TON from user balance
+    user.ton -= amount
+
+    # Save withdrawal record (optional: you probably have a Transaction model)
+    from models import Transaction
+    tx = Transaction(
+        user_id=user.id,
+        type="withdrawal",
+        amount=amount,
+        currency="TON",
+        status="Completed",
+        tx_hash=transaction_hash
+    )
+    db.session.add(tx)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Successfully withdrew {amount} TON",
+        "user": user.to_dict()
+    })

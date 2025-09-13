@@ -4,47 +4,67 @@ import type { User } from '../types';
 import { ICONS, SPIN_WHEEL_PRIZES } from '../constants';
 import SpinWheel from '../components/SpinWheel';
 import BuySpinsModal from '../components/BuySpinsModal';
-import { spinWheel, watchAdForSpin } from '../services/api';
+import SpinHistoryModal from '../components/SpinHistoryModal';
+import PrizeNotification from '../components/PrizeNotification';
+import { spinWheel, watchAdForSpin, getSpinHistory } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
 const EarnSpinOption: React.FC<{
-    icon: React.ReactNode;
-    title: string;
-    progress: number;
-    total: number;
-    onAction: () => void;
-    actionText: string;
-    disabled: boolean;
-}> = ({ icon, title, progress, total, onAction, actionText, disabled }) => (
-    <div className="bg-slate-800 p-4 rounded-lg">
-        <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-3">
-                <div className="text-green-400">{icon}</div>
-                <h3 className="font-semibold text-white">{title}</h3>
-            </div>
-            <span className="text-sm text-slate-400">{progress}/{total}</span>
-        </div>
-        <ProgressBar current={progress} total={total} />
-        <button
-            onClick={onAction}
-            disabled={disabled}
-            className="w-full mt-3 bg-green-500/20 text-green-400 font-bold py-2 rounded-lg text-sm hover:bg-green-500/40 transition-colors disabled:bg-slate-700/50 disabled:text-slate-500 disabled:cursor-not-allowed"
-        >
-            {actionText}
-        </button>
+  icon: React.ReactNode;
+  title: string;
+  progress: number;
+  total: number;
+  onAction: () => void;
+  actionText: string;
+  disabled: boolean;
+  loading?: boolean;
+}> = ({ icon, title, progress, total, onAction, actionText, disabled, loading = false }) => (
+  <div className="bg-slate-800/80 backdrop-blur-md p-5 rounded-2xl border border-slate-700/50 shadow-xl">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center space-x-3">
+        <div className="text-2xl text-green-400 filter drop-shadow-lg">{icon}</div>
+        <h3 className="font-semibold text-white text-lg">{title}</h3>
+      </div>
+      <span className="text-sm text-slate-300 bg-slate-700/50 px-3 py-1 rounded-full">
+        {progress}/{total}
+      </span>
     </div>
+    <ProgressBar current={progress} total={total} />
+    <button
+      onClick={onAction}
+      disabled={disabled || loading}
+      className="w-full mt-4 bg-gradient-to-r from-green-500/30 to-emerald-500/20 text-green-300 font-bold py-3 rounded-xl text-base hover:from-green-500/40 hover:to-emerald-500/30 hover:text-green-200 transition-all duration-300 disabled:bg-slate-700/30 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center space-x-2 border border-green-500/20"
+    >
+      {loading ? (
+        <>
+          <div className="w-5 h-5 border-2 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+          <span>Processing...</span>
+        </>
+      ) : (
+        <>
+          <span className="text-lg">✨</span>
+          <span>{actionText}</span>
+        </>
+      )}
+    </button>
+  </div>
 );
 
-
-const SpinWheelPage: React.FC<{ user: User | null; setUser: (user: User | ((prev: User | null) => User | null)) => void }> = ({ user, setUser }) => {
+const SpinWheelPage: React.FC<{ 
+  user: User | null; 
+  setUser: (user: User) => void 
+}> = ({ user, setUser }) => {
   const navigate = useNavigate();
-
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [isAutoSpinning, setIsAutoSpinning] = useState(false);
   const [isStoreOpen, setIsStoreOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [adLoading, setAdLoading] = useState(false);
+  const [recentPrize, setRecentPrize] = useState<{label: string; type: string; value: number} | null>(null);
+  const [showPrizeNotification, setShowPrizeNotification] = useState<{label: string; type: string; value: number} | null>(null);
 
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
@@ -53,64 +73,57 @@ const SpinWheelPage: React.FC<{ user: User | null; setUser: (user: User | ((prev
     currentSpins.current = user?.spins ?? 0;
   }, [user?.spins]);
 
-  const handleSpin = async () => {
-    if (isSpinning || currentSpins.current <= 0) return false;
+  const handleSpin = async (): Promise<boolean> => {
+    if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
     setIsSpinning(true);
-    const result = await spinWheel();
+    const result = await spinWheel(user.id);
     
-    if (result.success) {
-        setUser(result.user);
-        currentSpins.current = result.user.spins;
+    if (result.success && result.user) {
+      setUser(result.user);
+      currentSpins.current = result.user.spins;
+      setRecentPrize(result.prize || null);
+      
+      // Show prize notification
+      if (result.prize && result.prize.value > 0) {
+        setShowPrizeNotification(result.prize);
+      }
     }
     
     let stopAngle = 0;
-    if (result.success) {
-        const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => 
-            p.label === result.prize.label // Use label for uniqueness in case of same values
-        );
+    if (result.success && result.prize) {
+      const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => 
+        p.label === result.prize!.label
+      );
 
-        if (prizeIndex !== -1) {
-            const numPrizes = SPIN_WHEEL_PRIZES.length;
-            const segmentAngle = 360 / numPrizes;
-            
-            // Calculate the angle for the middle of the target segment
-            const targetAngle = (prizeIndex * segmentAngle) + (segmentAngle / 2);
-            
-            // CRITICAL FIX: The wheel's 0-degree point is at 3 o'clock.
-            // The pointer is at 12 o'clock (270 degrees).
-            // To align the targetAngle with the pointer, we calculate the required rotation.
-            // rotation + targetAngle = 270 => rotation = 270 - targetAngle
-            stopAngle = 270 - targetAngle;
-
-        } else {
-            // Fallback for an unexpected prize
-            stopAngle = Math.random() * 360;
-        }
-    } else {
-        // If the spin fails (e.g. no spins left), just do a random spin animation.
+      if (prizeIndex !== -1) {
+        const numPrizes = SPIN_WHEEL_PRIZES.length;
+        const segmentAngle = 360 / numPrizes;
+        const targetAngle = (prizeIndex * segmentAngle) + (segmentAngle / 2);
+        stopAngle = 270 - targetAngle;
+      } else {
         stopAngle = Math.random() * 360;
+      }
+    } else {
+      stopAngle = Math.random() * 360;
     }
     
-    setRotation(prevRotation => {
-        // Normalize previous rotation to avoid excessive numbers
-        const normalizedRotation = prevRotation % 360;
-        // Add multiple full rotations for visual effect + the final stop angle
-        return normalizedRotation + (360 * 5) + (360 - (normalizedRotation - stopAngle));
+    setRotation(prev => {
+      const normalized = prev % 360;
+      return normalized + (360 * 5) + (360 - (normalized - stopAngle));
     });
 
-    return new Promise<boolean>((resolve) => {
-        setTimeout(() => {
-            setIsSpinning(false);
-            if (!result.success) {
-                alert(result.prize.label); // Alert only on error
-            }
-            resolve(result.success);
-        }, 4000); // Must match animation duration in SpinWheel.tsx
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        setIsSpinning(false);
+        resolve(result.success);
+      }, 4000);
     });
   };
-  
+
   const runAutoSpin = async () => {
+    if (!user) return;
+    
     autoSpinActive.current = true;
     setIsAutoSpinning(true);
 
@@ -122,131 +135,247 @@ const SpinWheelPage: React.FC<{ user: User | null; setUser: (user: User | ((prev
       await new Promise(resolve => setTimeout(resolve, 250));
 
       if (autoSpinActive.current && currentSpins.current > 0 && spinsInSession > 0 && spinsInSession % 5 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          try {
-            await show_9692552();
-          } catch (e) {
-            console.error("Ad failed during auto-spin, continuing...", e);
-          }
-          await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        try {
+          await show_9692552();
+        } catch (e) {
+          console.error("Ad failed during auto-spin", e);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
     autoSpinActive.current = false;
     setIsAutoSpinning(false);
   };
-  
+
   const toggleAutoSpin = () => {
-      if (isAutoSpinning) {
-          autoSpinActive.current = false;
-          setIsAutoSpinning(false);
-      } else {
-          runAutoSpin();
-      }
+    if (isAutoSpinning) {
+      autoSpinActive.current = false;
+      setIsAutoSpinning(false);
+    } else {
+      runAutoSpin();
+    }
   };
-  
+
   const handleWatchAd = async () => {
-      try {
-        await show_9692552();
-        const result = await watchAdForSpin();
-        if(result.success && result.user) {
-            setUser(result.user);
-            alert(result.message);
-        } else {
-            alert(result.message);
-        }
-      } catch (e) {
-          console.error("Ad failed or was closed:", e);
-          alert("Ad failed to load.");
+    if (!user) return;
+    
+    setAdLoading(true);
+    try {
+      await show_9692552();
+      const result = await watchAdForSpin(user.id);
+      if (result.success && result.user) {
+        setUser(result.user);
+        // Show success notification
+        setShowPrizeNotification({
+          label: "+1 Spin (Ad Reward)",
+          type: "spins",
+          value: 1
+        });
       }
+    } catch (e) {
+      console.error("Ad failed:", e);
+    } finally {
+      setAdLoading(false);
+    }
   };
 
   const userSpins = user?.spins ?? 0;
+  const adsWatched = user?.ads_watched_today ?? 0;
+  const tasksCompleted = user?.tasks_completed_today_for_spin ?? 0;
+  const friendsInvited = user?.friends_invited_today_for_spin ?? 0;
 
   return (
-    <div className="bg-slate-900 text-white min-h-screen">
+    <div className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white min-h-screen relative overflow-hidden">
+      {/* Animated background particles */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        {[...Array(25)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-1.5 h-1.5 bg-yellow-400/40 rounded-full animate-sparkle"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+              animationDelay: `${Math.random() * 3}s`,
+              animationDuration: `${2 + Math.random() * 3}s`
+            }}
+          />
+        ))}
+        {[...Array(10)].map((_, i) => (
+          <div
+            key={i + 25}
+            className="absolute w-3 h-3 bg-green-400/30 rounded-full animate-float"
+            style={{
+              left: `${10 + Math.random() * 80}%`,
+              top: `${10 + Math.random() * 80}%`,
+              animationDelay: `${Math.random() * 5}s`,
+              animationDuration: `${4 + Math.random() * 4}s`
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Modals */}
       <BuySpinsModal isOpen={isStoreOpen} onClose={() => setIsStoreOpen(false)} user={user} setUser={setUser} />
+      <SpinHistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} userId={user?.id} />
+      <PrizeNotification 
+        prize={showPrizeNotification} 
+        onClose={() => setShowPrizeNotification(null)} 
+      />
       
-      <header className="fixed top-0 left-0 right-0 bg-slate-900/80 backdrop-blur-sm z-40 p-4 border-b border-slate-700/50 flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="flex items-center font-semibold text-white w-24">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          Back
+      {/* Header */}
+      <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md z-40 p-5 border-b border-slate-700/30 flex items-center justify-between">
+        <button 
+          onClick={() => navigate(-1)} 
+          className="flex items-center font-semibold text-white/90 hover:text-white transition-colors w-28"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span className="ml-2">Back</span>
         </button>
-        <h1 className="text-lg font-bold">Spin Wheel</h1>
-        <div className="w-24 text-right">
-            <div className="bg-slate-800 inline-block px-3 py-1 rounded-lg">
-                <span className="font-bold text-green-400">{userSpins.toLocaleString()}</span>
-                <span className="text-sm text-slate-300"> Spins</span>
+        
+        <div className="flex flex-col items-center">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">
+            SPIN WHEEL
+          </h1>
+          {recentPrize && (
+            <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-full ${
+              recentPrize.type === 'none' ? 'bg-red-500/20 text-red-300' : 
+              recentPrize.type === 'coins' ? 'bg-yellow-500/20 text-yellow-300' :
+              recentPrize.type === 'spins' ? 'bg-green-500/20 text-green-300' : 
+              'bg-blue-500/20 text-blue-300'
+            }`}>
+              Last: {recentPrize.label}
             </div>
+          )}
+        </div>
+        
+        <div 
+          className="w-28 text-right cursor-pointer hover:scale-105 transition-transform"
+          onClick={() => setIsHistoryOpen(true)}
+        >
+          <div className="bg-gradient-to-r from-slate-800 to-slate-700 inline-block px-4 py-2 rounded-xl shadow-lg border border-slate-600/30">
+            <span className="font-bold text-green-400 text-lg">{userSpins.toLocaleString()}</span>
+            <span className="text-sm text-slate-300 ml-1">Spins</span>
+          </div>
         </div>
       </header>
       
-      <main className="pt-20 pb-10 px-4 flex flex-col items-center justify-center">
-        <div className="w-full max-w-md mx-auto space-y-6">
+      {/* Main Content */}
+      <main className="pt-24 pb-12 px-5 flex flex-col items-center justify-center relative z-10">
+        <div className="w-full max-w-md mx-auto space-y-8">
+          {/* Wheel Section */}
+          <div className="bg-slate-800/50 backdrop-blur-md p-6 rounded-3xl border border-slate-700/30 shadow-2xl">
             <SpinWheel 
               rotation={rotation} 
               isSpinning={isSpinning || isAutoSpinning} 
               prizes={SPIN_WHEEL_PRIZES}
             />
             
-            <div className="flex space-x-3">
-                <button
-                    onClick={() => handleSpin()}
-                    disabled={isSpinning || isAutoSpinning || userSpins <= 0}
-                    className="flex-1 bg-green-500 text-white font-bold py-3 px-6 rounded-lg text-lg hover:bg-green-600 transition-all duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed"
-                >
-                    SPIN
-                </button>
-                 <button
-                    onClick={toggleAutoSpin}
-                    disabled={isSpinning || userSpins <= 0}
-                    className={`flex-1 font-bold py-3 px-6 rounded-lg text-lg transition-all duration-300 disabled:bg-slate-600 disabled:cursor-not-allowed ${isAutoSpinning ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'}`}
-                >
-                    {isAutoSpinning ? 'STOP' : 'AUTO SPIN'}
-                </button>
+            {/* Spin Buttons */}
+            <div className="flex space-x-4 mt-6">
+              <button
+                onClick={() => handleSpin()}
+                disabled={isSpinning || isAutoSpinning || userSpins <= 0}
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-4 px-6 rounded-2xl text-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 transform hover:scale-105 disabled:transform-none flex items-center justify-center space-x-3"
+              >
+                {isSpinning ? (
+                  <>
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span className="font-medium">SPINNING...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xl">🎰</span>
+                    <span className="font-medium">SPIN</span>
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={toggleAutoSpin}
+                disabled={isSpinning || userSpins <= 0}
+                className={`flex-1 font-bold py-4 px-6 rounded-2xl text-lg transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 disabled:transform-none flex items-center justify-center space-x-3 ${
+                  isAutoSpinning 
+                    ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25' 
+                    : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25'
+                }`}
+              >
+                {isAutoSpinning ? (
+                  <>
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span className="font-medium">STOP</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xl">⚡</span>
+                    <span className="font-medium">AUTO</span>
+                  </>
+                )}
+              </button>
             </div>
+          </div>
 
-            <div className="space-y-4 pt-4">
-                <h2 className="text-center text-xl font-bold text-white">Get More Spins</h2>
-                <EarnSpinOption
-                    icon={ICONS.ad}
-                    title="Watch an ad"
-                    progress={user?.adsWatchedToday ?? 0}
-                    total={50}
-                    onAction={handleWatchAd}
-                    actionText="Watch Ad (+1 Spin)"
-                    disabled={(user?.adsWatchedToday ?? 50) >= 50}
-                />
-                 <EarnSpinOption
-                    icon={ICONS.tasks}
-                    title="Complete tasks"
-                    progress={user?.tasksCompletedTodayForSpin ?? 0}
-                    total={50}
-                    onAction={() => navigate('/')}
-                    actionText="Go to Tasks (+1 Spin / task)"
-                    disabled={(user?.tasksCompletedTodayForSpin ?? 50) >= 50}
-                />
-                 <EarnSpinOption
-                    icon={ICONS.friends}
-                    title="Invite friends"
-                    progress={user?.friendsInvitedTodayForSpin ?? 0}
-                    total={50}
-                    onAction={() => navigate('/friends')}
-                    actionText="Invite Friends (+1 Spin / invite)"
-                    disabled={(user?.friendsInvitedTodayForSpin ?? 50) >= 50}
-                />
-            </div>
+          {/* Earn Spins Section */}
+          <div className="space-y-5">
+            <h2 className="text-center text-2xl font-bold text-white bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+              EARN MORE SPINS
+            </h2>
+            
+            <EarnSpinOption
+              icon={ICONS.ad}
+              title="Watch an Ad"
+              progress={adsWatched}
+              total={50}
+              onAction={handleWatchAd}
+              actionText="Watch Ad (+1 Spin)"
+              disabled={adsWatched >= 50}
+              loading={adLoading}
+            />
+            
+            <EarnSpinOption
+              icon={ICONS.tasks}
+              title="Complete Tasks"
+              progress={tasksCompleted}
+              total={50}
+              onAction={() => navigate('/')}
+              actionText="Go to Tasks"
+              disabled={tasksCompleted >= 50}
+            />
+            
+            <EarnSpinOption
+              icon={ICONS.friends}
+              title="Invite Friends"
+              progress={friendsInvited}
+              total={50}
+              onAction={() => navigate('/friends')}
+              actionText="Invite Friends"
+              disabled={friendsInvited >= 50}
+            />
+          </div>
 
-            <div className="pt-4">
-                <button 
-                    onClick={() => setIsStoreOpen(true)}
-                    className="w-full bg-indigo-600 text-white font-bold py-4 rounded-lg text-lg hover:bg-indigo-700 transition-colors flex items-center justify-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2z"/></svg>
-                    <span>Spin Store</span>
-                </button>
-            </div>
+          {/* Spin Store Button */}
+          <div className="pt-2">
+            <button 
+              onClick={() => setIsStoreOpen(true)}
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 text-white font-bold py-5 rounded-2xl text-lg hover:from-indigo-700 hover:to-purple-800 transition-all duration-300 shadow-xl hover:shadow-indigo-500/25 transform hover:scale-105 flex items-center justify-center space-x-3 group"
+            >
+              <span className="text-xl group-hover:scale-110 transition-transform">🛒</span>
+              <span className="font-medium">SPIN STORE</span>
+              <span className="text-xl group-hover:scale-110 transition-transform">💎</span>
+            </button>
+          </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="fixed bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-md z-40 p-4 border-t border-slate-700/30 text-center">
+        <p className="text-slate-400 text-sm">
+          Spin wisely! Each spin costs 1 spin token. Auto spin includes occasional ads.
+        </p>
+      </footer>
     </div>
   );
 };

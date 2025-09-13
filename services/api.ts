@@ -1132,24 +1132,24 @@ export const resetUserProgress = async (userId: string, game: 'space_defender' |
 
 
 
-export const executeWithdrawal = async (amountInTon: number): Promise<{ success: boolean; user: User | null }> => {
-    await simulateDelay(1500);
-    const amountInCoins = amountInTon * CONVERSION_RATE;
-    if (users[0].coins >= amountInCoins) {
-        users[0].coins -= amountInCoins;
-        users[0].ton += amountInTon;
-        transactions.unshift({
-            id: `t${Date.now()}`,
-            type: 'Withdrawal',
-            amount: amountInTon,
-            currency: 'TON',
-            date: new Date().toISOString().split('T')[0],
-            status: 'Completed'
-        });
-        return { success: true, user: { ...users[0] } };
-    }
-    return { success: false, user: null };
-}
+// export const executeWithdrawal = async (amountInTon: number): Promise<{ success: boolean; user: User | null }> => {
+//     await simulateDelay(1500);
+//     const amountInCoins = amountInTon * CONVERSION_RATE;
+//     if (users[0].coins >= amountInCoins) {
+//         users[0].coins -= amountInCoins;
+//         users[0].ton += amountInTon;
+//         transactions.unshift({
+//             id: `t${Date.now()}`,
+//             type: 'Withdrawal',
+//             amount: amountInTon,
+//             currency: 'TON',
+//             date: new Date().toISOString().split('T')[0],
+//             status: 'Completed'
+//         });
+//         return { success: true, user: { ...users[0] } };
+//     }
+//     return { success: false, user: null };
+// }
 
 
 //here all the magic 
@@ -1172,6 +1172,135 @@ export const depositAdCreditAPI = async (userId: number, amount: number): Promis
         return { success: false, user: null };
     }
 };
+
+
+
+// services/api.ts - Add these functions
+
+export const spinWheel = async (userId: number): Promise<{
+  success: boolean;
+  message: string;
+  prize?: { label: string; value: number; type: string };
+  user?: User;
+}> => {
+  return apiFetch('/api/spin', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+export const watchAdForSpin = async (userId: number): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+}> => {
+  return apiFetch('/api/spin/watch-ad', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+
+
+export const getSpinHistory = async (userId: number, limit: number = 20): Promise<{
+  success: boolean;
+  history: Array<{
+    prize_label: string;
+    prize_type: string;
+    prize_value: number;
+    created_at: string;
+  }>;
+  total: number;
+}> => {
+  return apiFetch(`/api/spin/history?userId=${userId}&limit=${limit}`);
+};
+
+
+
+
+
+
+export const buySpins = async (
+  packageId: string, 
+  paymentMethod: 'COINS' | 'TON' | 'TON_BLOCKCHAIN', 
+  userId: number,
+  transactionHash?: string
+): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+}> => {
+  return apiFetch('/api/spin/buy', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      packageId, 
+      paymentMethod,
+      userId,
+      transactionHash
+    }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+
+
+
+
+
+// services/api.ts
+export const executeWithdrawal = async (
+  amount: number,
+  transactionHash: string,
+  userId: number
+): Promise<{
+  success: boolean;
+  message: string;
+  user?: User;
+}> => {
+  return apiFetch('/api/withdraw/ton', {
+    method: 'POST',
+    body: JSON.stringify({ 
+      amount,
+      transactionHash,
+      userId,   // ✅ pass from frontend
+    }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 // export const depositAdCredit = async (
@@ -1393,51 +1522,51 @@ export const createAdminTask = async (task: Omit<Task, 'id' | 'icon'>): Promise<
 };
 
 
-export const spinWheel = async (): Promise<{ success: boolean; prize: { type: string; value: number; label: string; }; user: User }> => {
-    await simulateDelay(100);
+// export const spinWheel = async (): Promise<{ success: boolean; prize: { type: string; value: number; label: string; }; user: User }> => {
+//     await simulateDelay(100);
 
-    if (users[0].spins <= 0) {
-      return {
-        success: false,
-        prize: { type: 'ERROR', value: 0, label: 'No spins left' },
-        user: { ...users[0] }
-      };
-    }
+//     if (users[0].spins <= 0) {
+//       return {
+//         success: false,
+//         prize: { type: 'ERROR', value: 0, label: 'No spins left' },
+//         user: { ...users[0] }
+//       };
+//     }
 
-    users[0].spins -= 1;
+//     users[0].spins -= 1;
 
-    const totalWeight = SPIN_WHEEL_PRIZES.reduce((acc, prize) => acc + prize.weight, 0);
-    let randomWeight = Math.random() * totalWeight;
-    let selectedPrize = SPIN_WHEEL_PRIZES[SPIN_WHEEL_PRIZES.length - 1]; // fallback
+//     const totalWeight = SPIN_WHEEL_PRIZES.reduce((acc, prize) => acc + prize.weight, 0);
+//     let randomWeight = Math.random() * totalWeight;
+//     let selectedPrize = SPIN_WHEEL_PRIZES[SPIN_WHEEL_PRIZES.length - 1]; // fallback
 
-    for (const prize of SPIN_WHEEL_PRIZES) {
-        if (randomWeight < prize.weight) {
-            selectedPrize = prize;
-            break;
-        }
-        randomWeight -= prize.weight;
-    }
+//     for (const prize of SPIN_WHEEL_PRIZES) {
+//         if (randomWeight < prize.weight) {
+//             selectedPrize = prize;
+//             break;
+//         }
+//         randomWeight -= prize.weight;
+//     }
     
-    if (selectedPrize.type === 'COINS') {
-        users[0].coins += selectedPrize.value;
-    }
+//     if (selectedPrize.type === 'COINS') {
+//         users[0].coins += selectedPrize.value;
+//     }
 
-    return {
-        success: true,
-        prize: selectedPrize,
-        user: { ...users[0] }
-    };
-};
+//     return {
+//         success: true,
+//         prize: selectedPrize,
+//         user: { ...users[0] }
+//     };
+// };
 
-export const watchAdForSpin = async(): Promise<{success: boolean; message: string; user?: User}> => {
-    await simulateDelay(200);
-    if (users[0].adsWatchedToday >= 50) {
-        return { success: false, message: "Daily limit for ad spins reached." };
-    }
-    users[0].adsWatchedToday += 1;
-    users[0].spins += 1;
-    return { success: true, message: "+1 Spin!", user: { ...users[0] } };
-}
+// export const watchAdForSpin = async(): Promise<{success: boolean; message: string; user?: User}> => {
+//     await simulateDelay(200);
+//     if (users[0].adsWatchedToday >= 50) {
+//         return { success: false, message: "Daily limit for ad spins reached." };
+//     }
+//     users[0].adsWatchedToday += 1;
+//     users[0].spins += 1;
+//     return { success: true, message: "+1 Spin!", user: { ...users[0] } };
+// }
 
 export const completeTask = async(taskId:number,userid:number): Promise<{success: boolean; message: string; user?: User}> => {
     await simulateDelay(50);
@@ -1459,31 +1588,8 @@ export const completeTask = async(taskId:number,userid:number): Promise<{success
 //     return { success: true, message: "+1 Spin for inviting a friend!", user: { ...users[0] } };
 // }
 
-export const buySpins = async (packageId: string, currency: 'TON' | 'COINS'): Promise<{ success: boolean; message: string; user?: User; }> => {
-    await simulateDelay(1000);
-    const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
-    if (!selectedPackage) {
-        return { success: false, message: "Invalid package selected." };
-    }
-    
-    if (currency === 'TON') {
-        // Handled client-side, just award spins
-    } else { // currency === 'COINS'
-        const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
-        if (users[0].coins < costInCoins) {
-            return { success: false, message: "Insufficient coin balance." };
-        }
-        users[0].coins -= costInCoins;
-    }
+// services/api.ts
 
-    users[0].spins += selectedPackage.spins;
-
-    return {
-        success: true,
-        message: `Successfully purchased ${selectedPackage.spins.toLocaleString()} spins!`,
-        user: { ...users[0] }
-    };
-};
 
 export const redeemPromoCode = async (code: string): Promise<{ success: boolean; message: string; user?: User; }> => {
     await simulateDelay(400);

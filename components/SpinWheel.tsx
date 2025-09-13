@@ -1,14 +1,12 @@
+// components/SpinWheel.tsx
+import React, { useEffect, useRef } from 'react';
 
-
-import React from 'react';
-import { ICONS } from '../constants';
-
-// This mirrors the structure in constants.tsx
 interface Prize {
-    type: string;
-    value: number;
-    weight: number;
-    label: string;
+  label: string;
+  value: number;
+  type: string;
+  color: string;
+  textColor?: string;
 }
 
 interface SpinWheelProps {
@@ -18,91 +16,168 @@ interface SpinWheelProps {
 }
 
 const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) => {
-  const numPrizes = prizes.length;
-  const segmentAngle = 360 / numPrizes;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
 
-  const getSegmentColors = () => {
-    // A vibrant, consistent color palette
-    const colors = ['#db2777', '#16a34a', '#4f46e5', '#f59e0b', '#be185d', '#059669', '#3730a3', '#d97706'];
-    return prizes.map((_, index) => colors[index % colors.length]);
-  };
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  const segmentColors = getSegmentColors();
-  const conicGradient = segmentColors.map((color, index) => 
-      `${color} ${index * segmentAngle}deg ${(index + 1) * segmentAngle}deg`
-  ).join(', ');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const drawWheel = () => {
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = Math.min(centerX, centerY) - 10;
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw outer glow
+      const gradient = ctx.createRadialGradient(centerX, centerY, radius - 5, centerX, centerY, radius + 15);
+      gradient.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
+      gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+      
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius + 10, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Draw wheel segments
+      const segmentAngle = (Math.PI * 2) / prizes.length;
+      
+      prizes.forEach((prize, index) => {
+        const startAngle = index * segmentAngle;
+        const endAngle = (index + 1) * segmentAngle;
+        
+        // Draw segment
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.closePath();
+        
+        ctx.fillStyle = prize.color;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Draw text
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(startAngle + segmentAngle / 2);
+        
+        ctx.fillStyle = prize.textColor || '#ffffff';
+        ctx.font = 'bold 12px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        // Split long text into multiple lines
+        const maxWidth = radius * 0.6;
+        const words = prize.label.split(' ');
+        const lines = [];
+        let currentLine = words[0];
+        
+        for (let i = 1; i < words.length; i++) {
+          const testLine = currentLine + ' ' + words[i];
+          if (ctx.measureText(testLine).width < maxWidth) {
+            currentLine = testLine;
+          } else {
+            lines.push(currentLine);
+            currentLine = words[i];
+          }
+        }
+        lines.push(currentLine);
+        
+        const lineHeight = 14;
+        const totalHeight = lines.length * lineHeight;
+        
+        lines.forEach((line, lineIndex) => {
+          ctx.fillText(
+            line,
+            radius * 0.65,
+            -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2
+          );
+        });
+        
+        ctx.restore();
+      });
+      
+      // Draw center circle
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius * 0.12, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Draw center text
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SPIN', centerX, centerY);
+    };
+
+    drawWheel();
+  }, [prizes]);
+
+  useEffect(() => {
+    const wheel = wheelRef.current;
+    if (!wheel) return;
+
+    wheel.style.transition = isSpinning ? 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)' : 'none';
+    wheel.style.transform = `rotate(${rotation}deg)`;
+
+    if (isSpinning) {
+      // Add sparkle effect during spin
+      wheel.style.boxShadow = '0 0 50px rgba(255, 215, 0, 0.7)';
+      
+      return () => {
+        wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
+      };
+    }
+  }, [rotation, isSpinning]);
 
   return (
-    <div className="flex flex-col items-center">
-      {/* Spacer to keep layout consistent after removing prize text */}
-      <div className="h-16 mb-2 flex flex-col justify-center items-center text-center">
-         {/* The text display was removed as per user request to avoid confusion. The wheel itself is the only indicator. */}
+    <div className="relative flex items-center justify-center mb-4">
+      {/* Pointer - More elegant design */}
+      <div className="absolute top-0 z-20 transform -translate-y-1/2">
+        <div className="relative">
+          <div className="w-6 h-8 bg-gradient-to-b from-red-500 to-red-700 rounded-t-lg"></div>
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-red-700 rotate-45"></div>
+          <div className="absolute top-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-full opacity-60"></div>
+        </div>
       </div>
-
-      {/* Wheel */}
-      <div className="relative w-64 h-64">
-        {/* Ticker */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-3 z-20"
-             style={{ filter: 'drop-shadow(0 5px 5px rgba(0,0,0,0.5))' }}>
-             <svg width="24" height="36" viewBox="0 0 28 42" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-6 h-9">
-                <path d="M14 42C14 42 28 30 28 18C28 6 21.7175 0 14 0C6.2825 0 0 6 0 18C0 30 14 42Z" fill="#ff4757" stroke="#ffffff" strokeWidth="2"/>
-             </svg>
+      
+      {/* Wheel Container - Cleaner design without unnecessary elements */}
+      <div className="relative w-72 h-72">
+        {/* Outer glow */}
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-600/10 rounded-full blur-xl animate-pulse"></div>
+        
+        {/* Wheel */}
+        <div
+          ref={wheelRef}
+          className="relative w-full h-full rounded-full shadow-xl transition-transform duration-4000 ease-out border-4 border-yellow-500/20"
+          style={{ boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)' }}
+        >
+          <canvas
+            ref={canvasRef}
+            width={288}
+            height={288}
+            className="w-full h-full rounded-full"
+          />
         </div>
         
-        {/* Wheel container */}
-        <div
-          className="relative w-full h-full rounded-full transition-transform duration-[4000ms] ease-out border-4 border-slate-700/50 shadow-2xl"
-          style={{ 
-            transform: `rotate(${rotation}deg) translateZ(0)`, // translateZ(0) can help with rendering performance
-            background: `conic-gradient(${conicGradient})`,
-            transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)', // Smoother ease-out
-          }}
-        >
-          {/* Segment Lines */}
-          {prizes.map((_, index) => (
-             <div
-                key={`line-${index}`}
-                className="absolute w-full h-full"
-                style={{ transform: `rotate(${index * segmentAngle}deg)` }}
-             >
-                <div className="w-1/2 h-px bg-slate-500/50 absolute top-1/2 -translate-y-1/2 right-0"></div>
-             </div>
-          ))}
-
-          {/* Prize Labels */}
-          {prizes.map((prize, index) => {
-            const angle = segmentAngle * index + segmentAngle / 2;
-            // Since all prizes are coins, we can remove the conditional logic.
-            const icon = ICONS.coin;
-            return (
-              <div
-                key={index}
-                className="absolute w-full h-full"
-                style={{ transform: `rotate(${angle}deg)` }}
-              >
-                 <div className="absolute w-1/2 h-full top-0 left-0 origin-right flex items-center justify-start pl-2">
-                    <div 
-                      className="flex items-center space-x-1 text-white" 
-                      style={{ 
-                        transform: 'rotate(-90deg)',
-                        textShadow: '0px 1px 3px rgba(0,0,0,0.7)'
-                      }}
-                    >
-                      <span className="font-bold text-xs tracking-tighter">{prize.label}</span>
-                      {React.cloneElement(icon, { className: 'w-3.5 h-3.5' })}
-                    </div>
-                 </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Center circle */}
-         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-slate-800 rounded-full border-4 border-slate-600 shadow-inner flex items-center justify-center">
-            <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center shadow-md">
-                 <span className="text-white font-bold text-lg tracking-widest">{isSpinning ? '...' : 'GO'}</span>
-            </div>
-        </div>
+        {/* Decorative rings - Simplified */}
+        <div className="absolute inset-3 border border-yellow-400/20 rounded-full pointer-events-none"></div>
+        
+        {/* Spinning glow effect */}
+        {isSpinning && (
+          <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/10 via-orange-500/5 to-yellow-400/10 rounded-full animate-spin-slow pointer-events-none"></div>
+        )}
       </div>
     </div>
   );

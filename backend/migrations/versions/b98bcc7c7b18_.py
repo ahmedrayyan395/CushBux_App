@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: bb77cd2bcff7
+Revision ID: b98bcc7c7b18
 Revises: 
-Create Date: 2025-09-11 11:03:20.118486
+Create Date: 2025-09-13 10:22:17.837221
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bb77cd2bcff7'
+revision = 'b98bcc7c7b18'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -109,14 +109,25 @@ def upgrade():
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('referrer_id', 'referred_id', name='unique_referral')
     )
-    op.create_table('transactions',
-    sa.Column('id', sa.String(), nullable=False),
+    op.create_table('spin_history',
+    sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
-    sa.Column('type', sa.Enum('WITHDRAWAL', 'DEPOSIT', name='transactiontype'), nullable=False),
+    sa.Column('prize_type', sa.String(length=20), nullable=False),
+    sa.Column('prize_value', sa.Numeric(precision=20, scale=9), nullable=False),
+    sa.Column('prize_label', sa.String(length=100), nullable=False),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('transactions',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('amount', sa.Numeric(precision=20, scale=9), nullable=False),
+    sa.Column('transaction_type', sa.Enum('WITHDRAWAL', 'DEPOSIT', name='transactiontype'), nullable=False),
     sa.Column('currency', sa.Enum('TON', 'COINS', name='transactioncurrency'), nullable=False),
-    sa.Column('date', sa.TIMESTAMP(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
     sa.Column('status', sa.Enum('COMPLETED', 'PENDING', 'FAILED', name='transactionstatus'), nullable=False),
+    sa.Column('description', sa.String(length=255), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -208,6 +219,7 @@ def downgrade():
     op.drop_table('user_game_progress')
     op.drop_table('user_campaigns')
     op.drop_table('transactions')
+    op.drop_table('spin_history')
     op.drop_table('referrals')
     op.drop_table('friendships')
     op.drop_table('daily_tasks')
