@@ -68,6 +68,7 @@ const SpinWheelPage: React.FC<{
 
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
+  const totalRotations = useRef(0); // Track total rotations for proper animation
 
   useEffect(() => {
     currentSpins.current = user?.spins ?? 0;
@@ -77,6 +78,12 @@ const SpinWheelPage: React.FC<{
     if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
     setIsSpinning(true);
+    
+    // First, calculate the target rotation for smooth animation
+    let stopAngle = 0;
+    let prizeIndex = -1;
+    
+    // Get spin result from backend
     const result = await spinWheel(user.id);
     
     if (result.success && result.user) {
@@ -84,40 +91,63 @@ const SpinWheelPage: React.FC<{
       currentSpins.current = result.user.spins;
       setRecentPrize(result.prize || null);
       
-      // Show prize notification
-      if (result.prize && result.prize.value > 0) {
-        setShowPrizeNotification(result.prize);
-      }
-    }
-    
-    let stopAngle = 0;
-    if (result.success && result.prize) {
-      const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => 
-        p.label === result.prize!.label
-      );
-
-      if (prizeIndex !== -1) {
-        const numPrizes = SPIN_WHEEL_PRIZES.length;
-        const segmentAngle = 360 / numPrizes;
-        const targetAngle = (prizeIndex * segmentAngle) + (segmentAngle / 2);
-        stopAngle = 270 - targetAngle;
+      // Calculate wheel stop position based on prize
+      if (result.prize) {
+        prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
+        
+        if (prizeIndex !== -1) {
+          const numPrizes = SPIN_WHEEL_PRIZES.length;
+          const segmentAngle = 360 / numPrizes;
+          // Calculate the angle for the middle of the target segment
+          const targetAngle = (prizeIndex * segmentAngle) + (segmentAngle / 2);
+          // Convert to wheel rotation (pointer is at 270 degrees)
+          stopAngle = 270 - targetAngle;
+        } else {
+          // Fallback: random position
+          stopAngle = Math.random() * 360;
+        }
       } else {
+        // Fallback: random position
         stopAngle = Math.random() * 360;
       }
     } else {
+      // If spin fails, use random position
       stopAngle = Math.random() * 360;
     }
     
-    setRotation(prev => {
-      const normalized = prev % 360;
-      return normalized + (360 * 5) + (360 - (normalized - stopAngle));
-    });
-
+    // Calculate new rotation with multiple full spins for animation
+    const currentRotation = rotation % 360;
+    const fullRotations = 5; // Number of full spins before stopping
+    
+    // Calculate the shortest path to the target angle
+    let targetRotation = totalRotations.current * 360 + stopAngle;
+    
+    // If we're going backwards through 0, add 360 to avoid negative rotation
+    if (targetRotation < currentRotation) {
+      targetRotation += 360;
+    }
+    
+    // Add full rotations for visual effect
+    targetRotation += fullRotations * 360;
+    
+    // Update total rotations for next spin
+    totalRotations.current = Math.floor(targetRotation / 360);
+    
+    // Animate the wheel
+    setRotation(targetRotation);
+    
+    // Return promise that resolves when animation completes
     return new Promise((resolve) => {
       setTimeout(() => {
         setIsSpinning(false);
+        
+        // Show prize notification AFTER animation completes
+        if (result.success && result.prize && result.prize.value > 0) {
+          setShowPrizeNotification(result.prize);
+        }
+        
         resolve(result.success);
-      }, 4000);
+      }, 4000); // Match animation duration
     });
   };
 
@@ -158,7 +188,7 @@ const SpinWheelPage: React.FC<{
     }
   };
 
-  const handleWatchAd = async () => {
+ const handleWatchAd = async () => {
     if (!user) return;
     
     setAdLoading(true);
@@ -167,18 +197,20 @@ const SpinWheelPage: React.FC<{
       const result = await watchAdForSpin(user.id);
       if (result.success && result.user) {
         setUser(result.user);
-        // Show success notification
-        setShowPrizeNotification({
-          label: "+1 Spin (Ad Reward)",
-          type: "spins",
-          value: 1
-        });
       }
     } catch (e) {
       console.error("Ad failed:", e);
     } finally {
       setAdLoading(false);
     }
+  };
+
+  const handleCompleteTask = () => {
+    navigate('/tasks');
+  };
+
+  const handleInviteFriends = () => {
+    navigate('/friends');
   };
 
   const userSpins = user?.spins ?? 0;
@@ -340,8 +372,8 @@ const SpinWheelPage: React.FC<{
               title="Complete Tasks"
               progress={tasksCompleted}
               total={50}
-              onAction={() => navigate('/')}
-              actionText="Go to Tasks"
+              onAction={handleCompleteTask}
+              actionText="Go to Tasks (+1 Spin/task)"
               disabled={tasksCompleted >= 50}
             />
             
@@ -350,8 +382,8 @@ const SpinWheelPage: React.FC<{
               title="Invite Friends"
               progress={friendsInvited}
               total={50}
-              onAction={() => navigate('/friends')}
-              actionText="Invite Friends"
+              onAction={handleInviteFriends}
+              actionText="Invite Friends (+1 Spin/invite)"
               disabled={friendsInvited >= 50}
             />
           </div>
@@ -369,6 +401,7 @@ const SpinWheelPage: React.FC<{
           </div>
         </div>
       </main>
+
 
       {/* Footer */}
       <footer className="fixed bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-md z-40 p-4 border-t border-slate-700/30 text-center">

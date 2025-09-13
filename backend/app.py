@@ -2793,19 +2793,20 @@ def spin_wheel():
         # Deduct spin
         user.spins -= 1
         
-        # Determine prize (weighted random)
+        # Determine prize (weighted random) - Updated to match frontend wheel
         prizes = [
-            {"label": "100 Coins", "value": 100, "type": "coins", "weight": 30},
+            {"label": "100 Coins", "value": 100, "type": "coins", "weight": 25},
             {"label": "250 Coins", "value": 250, "type": "coins", "weight": 20},
-            {"label": "500 Coins", "value": 500, "type": "coins", "weight": 10},
-            {"label": "1000 Coins", "value": 1000, "type": "coins", "weight": 5},
+            {"label": "500 Coins", "value": 500, "type": "coins", "weight": 12},
+            {"label": "1000 Coins", "value": 1000, "type": "coins", "weight": 8},
             {"label": "1 Spin", "value": 1, "type": "spins", "weight": 15},
             {"label": "2 Spins", "value": 2, "type": "spins", "weight": 8},
-            {"label": "5 Spins", "value": 5, "type": "spins", "weight": 2},
-            {"label": "0.001 TON", "value": 0.001, "type": "ton", "weight": 5},
-            {"label": "0.005 TON", "value": 0.005, "type": "ton", "weight": 3},
+            {"label": "5 Spins", "value": 5, "type": "spins", "weight": 3},
+            {"label": "0.001 TON", "value": 0.001, "type": "ton", "weight": 4},
+            {"label": "0.005 TON", "value": 0.005, "type": "ton", "weight": 2},
             {"label": "0.01 TON", "value": 0.01, "type": "ton", "weight": 1},
-            {"label": "Better luck next time!", "value": 0, "type": "none", "weight": 5}
+            {"label": "Better luck!", "value": 0, "type": "none", "weight": 1},  # Very rare "bad luck"
+            {"label": "Jackpot!", "value": 2000, "type": "coins", "weight": 1}   # Very rare jackpot
         ]
         
         # Weighted random selection
@@ -2820,13 +2821,24 @@ def spin_wheel():
                 selected_prize = prize
                 break
         
-        # Award prize
+        # Award prize based on type
         if selected_prize["type"] == "coins":
             user.coins += selected_prize["value"]
+            # Add bonus for jackpot
+            if selected_prize["label"] == "Jackpot!":
+                user.spins += 5  # Bonus spins for jackpot
+                
         elif selected_prize["type"] == "spins":
             user.spins += selected_prize["value"]
+            
         elif selected_prize["type"] == "ton":
-            user.ad_credit += Decimal(selected_prize["value"])
+            # Assuming you have a TON balance field or using ad_credit for TON
+            if hasattr(user, 'ton_balance'):
+                user.ton_balance += Decimal(str(selected_prize["value"]))
+            else:
+                user.ad_credit += Decimal(str(selected_prize["value"]))
+                
+        # For "none" type (Better luck!), no award is given
         
         # Record spin history
         spin_record = SpinHistory(
@@ -2839,18 +2851,25 @@ def spin_wheel():
         
         db.session.commit()
         
+        # Prepare response message based on prize type
+        if selected_prize["type"] == "none":
+            message = "Better luck next time!"
+        elif selected_prize["label"] == "Jackpot!":
+            message = "🎉 JACKPOT! You won 2000 Coins + 5 bonus spins! 🎉"
+        else:
+            message = f"Congratulations! You won {selected_prize['label']}"
+        
         return jsonify({
             "success": True,
             "prize": selected_prize,
             "user": user.to_dict(),
-            "message": f"Congratulations! You won {selected_prize['label']}"
+            "message": message
         })
         
     except Exception as e:
         db.session.rollback()
         print(f"Spin error: {e}")
         return jsonify({"success": False, "message": "Spin failed"}), 500
-
 @app.route('/api/spin/watch-ad', methods=['POST'])
 @jwt_required
 def watch_ad_for_spin():
