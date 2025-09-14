@@ -1,5 +1,4 @@
-// components/SpinWheel.tsx
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 
 interface Prize {
   label: string;
@@ -15,14 +14,17 @@ interface SpinWheelProps {
   prizes: Prize[];
 }
 
-const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) => {
+const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpinning, prizes }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
 
+  useImperativeHandle(ref, () => wheelRef.current!);
+
+  // Canvas drawing logic (no changes here)
   useEffect(() => {
+    // ... your existing canvas drawing logic remains the same
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -31,10 +33,8 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
       const centerY = canvas.height / 2;
       const radius = Math.min(centerX, centerY) - 10;
       
-      // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw outer glow
       const gradient = ctx.createRadialGradient(centerX, centerY, radius - 5, centerX, centerY, radius + 15);
       gradient.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
       gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
@@ -44,14 +44,12 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
       ctx.fillStyle = gradient;
       ctx.fill();
       
-      // Draw wheel segments
       const segmentAngle = (Math.PI * 2) / prizes.length;
       
       prizes.forEach((prize, index) => {
         const startAngle = index * segmentAngle;
         const endAngle = (index + 1) * segmentAngle;
         
-        // Draw segment
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startAngle, endAngle);
@@ -63,7 +61,6 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Draw text
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(startAngle + segmentAngle / 2);
@@ -73,7 +70,6 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         
-        // Split long text into multiple lines
         const maxWidth = radius * 0.6;
         const words = prize.label.split(' ');
         const lines = [];
@@ -94,17 +90,12 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
         const totalHeight = lines.length * lineHeight;
         
         lines.forEach((line, lineIndex) => {
-          ctx.fillText(
-            line,
-            radius * 0.65,
-            -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2
-          );
+          ctx.fillText(line, radius * 0.65, -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2);
         });
         
         ctx.restore();
       });
       
-      // Draw center circle
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius * 0.12, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
@@ -113,7 +104,6 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
       ctx.lineWidth = 3;
       ctx.stroke();
       
-      // Draw center text
       ctx.fillStyle = '#000';
       ctx.font = 'bold 14px Inter, sans-serif';
       ctx.textAlign = 'center';
@@ -124,26 +114,36 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
     drawWheel();
   }, [prizes]);
 
+  // *** MODIFICATION START: More robust animation effect ***
   useEffect(() => {
     const wheel = wheelRef.current;
     if (!wheel) return;
 
-    wheel.style.transition = isSpinning ? 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)' : 'none';
-    wheel.style.transform = `rotate(${rotation}deg)`;
-
     if (isSpinning) {
-      // Add sparkle effect during spin
+      // 1. Set the transition style for the animation.
+      wheel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)';
+      // 2. Apply the final rotation value. The browser will animate to this state.
+      wheel.style.transform = `rotate(${rotation}deg)`;
+      // 3. Add visual flair.
       wheel.style.boxShadow = '0 0 50px rgba(255, 215, 0, 0.7)';
-      
-      return () => {
-        wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
-      };
+    } else {
+      // When not spinning, we want to "settle" the wheel at its final position.
+      // 1. Remove the transition so that any future rotation changes are instant.
+      wheel.style.transition = 'none';
+      // 2. Ensure the transform is locked to the final rotation value.
+      wheel.style.transform = `rotate(${rotation}deg)`;
+      // 3. Reset the visual flair.
+      wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
     }
   }, [rotation, isSpinning]);
+  // *** MODIFICATION END ***
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault();
+  };
 
   return (
-    <div className="relative flex items-center justify-center mb-4">
-      {/* Pointer - More elegant design */}
+    <div className="relative flex items-center justify-center mb-4" onTouchStart={handleTouchStart}>
       <div className="absolute top-0 z-20 transform -translate-y-1/2">
         <div className="relative">
           <div className="w-6 h-8 bg-gradient-to-b from-red-500 to-red-700 rounded-t-lg"></div>
@@ -152,16 +152,13 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
         </div>
       </div>
       
-      {/* Wheel Container - Cleaner design without unnecessary elements */}
       <div className="relative w-72 h-72">
-        {/* Outer glow */}
         <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-600/10 rounded-full blur-xl animate-pulse"></div>
         
-        {/* Wheel */}
         <div
           ref={wheelRef}
-          className="relative w-full h-full rounded-full shadow-xl transition-transform duration-4000 ease-out border-4 border-yellow-500/20"
-          style={{ boxShadow: '0 0 20px rgba(255, 215, 0, 0.3)' }}
+          className="relative w-full h-full rounded-full shadow-xl border-4 border-yellow-500/20"
+          style={{ willChange: 'transform' }} // Keep will-change for performance
         >
           <canvas
             ref={canvasRef}
@@ -171,16 +168,14 @@ const SpinWheel: React.FC<SpinWheelProps> = ({ rotation, isSpinning, prizes }) =
           />
         </div>
         
-        {/* Decorative rings - Simplified */}
         <div className="absolute inset-3 border border-yellow-400/20 rounded-full pointer-events-none"></div>
         
-        {/* Spinning glow effect */}
         {isSpinning && (
           <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/10 via-orange-500/5 to-yellow-400/10 rounded-full animate-spin-slow pointer-events-none"></div>
         )}
       </div>
     </div>
   );
-};
+});
 
 export default SpinWheel;

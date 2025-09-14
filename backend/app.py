@@ -2767,13 +2767,13 @@ def deposit_ad_credit():
 
 # Add these endpoints to your app.py
 
-@app.route('/api/spin', methods=['POST'])
+@app.route('/spin', methods=['POST'])
 @jwt_required
 def spin_wheel():
     """Handle wheel spin and award prizes"""
     try:
         data = request.get_json()
-        user_id = data.get('userId')
+        user_id = data.get('user_id')
         
         if not user_id:
             return jsonify({"success": False, "message": "User ID required"}), 400
@@ -2870,6 +2870,9 @@ def spin_wheel():
         db.session.rollback()
         print(f"Spin error: {e}")
         return jsonify({"success": False, "message": "Spin failed"}), 500
+
+
+
 @app.route('/api/spin/watch-ad', methods=['POST'])
 @jwt_required
 def watch_ad_for_spin():

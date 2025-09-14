@@ -34,8 +34,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 
 // const API_BASE_URL = 'https://1e30ee36ed36.ngrok-free.app ';
 
@@ -1176,19 +1176,57 @@ export const depositAdCreditAPI = async (userId: number, amount: number): Promis
 
 
 // services/api.ts - Add these functions
-
-export const spinWheel = async (userId: number): Promise<{
+// The response type from your Flask backend
+interface SpinResponse {
   success: boolean;
-  message: string;
-  prize?: { label: string; value: number; type: string };
-  user?: User;
-}> => {
-  return apiFetch('/api/spin', {
-    method: 'POST',
-    body: JSON.stringify({ userId }),
-    headers: { 'Content-Type': 'application/json' },
-  });
+  prize: {
+    label: string;
+    value: number;
+    type: string;
+  } | null;
+  user: User | null;
+  message: string; // The missing property
+}
+
+export const spinWheel = async (userId: number): Promise<SpinResponse> => {
+  try {
+    // We pass the corrected SpinResponse type to apiFetch
+    const data = await apiFetch<SpinResponse>('/spin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Your apiFetch helper should automatically add the Authorization header
+      },
+      // Ensure you are sending 'user_id' to match your corrected backend
+      body: JSON.stringify({ user_id: userId })
+    });
+
+    if (!data.success) {
+      // Now we can safely access data.message
+      throw new Error(data.message || 'Spin failed on the backend.');
+    }
+
+    return data;
+
+  } catch (error) {
+    console.error('Spin Wheel API error:', error);
+    // Return a response that matches the SpinResponse type for consistency
+    return { 
+      success: false, 
+      prize: null, 
+      user: null,
+      message: error instanceof Error ? error.message : 'A network error occurred.'
+    };
+  }
 };
+
+// This is your existing function, shown for context.
+// You should also ensure its return type is correct.
+interface DepositResponse {
+    success: boolean;
+    user: User | null; // Assuming the backend might return null on failure
+}
+
 
 export const watchAdForSpin = async (userId: number): Promise<{
   success: boolean;
