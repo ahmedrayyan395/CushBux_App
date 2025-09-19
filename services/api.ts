@@ -37,7 +37,7 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // const API_BASE_URL = 'http://127.0.0.1:5000';
 const API_BASE_URL = 'https://api.cashubux.com/';
 
-// const API_BASE_URL = 'https://1e30ee36ed36.ngrok-free.app ';
+// const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -1153,24 +1153,42 @@ export const resetUserProgress = async (userId: string, game: 'space_defender' |
 
 
 //here all the magic 
-export const depositAdCreditAPI = async (userId: number, amount: number): Promise<{ success: boolean; user: User }> => {
-    try {
-        const data = await apiFetch<{ success: boolean; user: User }>('/user/deposit-ad-credit', {
-            method: 'POST',
-            body: JSON.stringify({ user_id: userId, amount:amount })
-        });
-
-        console.log('Deposit API response:', data);
-
-        if (!data.success) {
-            throw new Error('Deposit failed');
-        }
-
-        return { success: true, user: data.user };
-    } catch (error) {
-        console.error('Deposit error:', error);
-        return { success: false, user: null };
+export const depositAdCreditAPI = async (
+  userId: number, 
+  amount: number,
+  transactionHash?: string
+): Promise<{ success: boolean; user: User; message?: string }> => {
+  try {
+    const payload: any = { 
+      user_id: userId, 
+      amount: amount 
+    };
+    
+    if (transactionHash) {
+      payload.transaction_hash = transactionHash;
+      payload.payment_method = 'BLOCKCHAIN';
     }
+
+    const data = await apiFetch<{ success: boolean; user: User; message?: string }>('/user/deposit-ad-credit', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    console.log('Deposit API response:', data);
+
+    if (!data.success) {
+      throw new Error(data.message || 'Deposit failed');
+    }
+
+    return { success: true, user: data.user };
+  } catch (error: any) {
+    console.error('Deposit error:', error);
+    return { 
+      success: false, 
+      user: null,
+      message: error.data?.message || error.message || 'Deposit failed'
+    };
+  }
 };
 
 
@@ -1260,53 +1278,69 @@ export const getSpinHistory = async (userId: number, limit: number = 20): Promis
 
 
 
-export const buySpins = async (
-  packageId: string, 
-  paymentMethod: 'COINS' | 'TON' | 'TON_BLOCKCHAIN', 
-  userId: number,
-  transactionHash?: string
-): Promise<{
-  success: boolean;
-  message: string;
-  user?: User;
-}> => {
-  return apiFetch('/api/spin/buy', {
-    method: 'POST',
-    body: JSON.stringify({ 
-      packageId, 
-      paymentMethod,
-      userId,
-      transactionHash
-    }),
-    headers: { 'Content-Type': 'application/json' },
-  });
+// In your api.ts file
+export const buySpins = async (data: {
+  packageId: string;
+  paymentMethod: 'COINS' | 'TON' | 'TON_BLOCKCHAIN';
+  userId: string;
+  transactionHash?: string;
+}) => {
+  try {
+    console.log('Sending buySpins request:', data);
+    
+    const response = await apiFetch<any>('/api/spin/buy', {
+      method: 'POST',
+      body: JSON.stringify({
+        packageId: data.packageId,
+        paymentMethod: data.paymentMethod,
+        userId: data.userId,
+        transactionHash: data.transactionHash
+      })
+    });
+
+    console.log('Raw buySpins response:', response);
+    return response;
+    
+  } catch (error: any) {
+    console.error('Buy spins error:', error);
+    return { 
+      success: false, 
+      message: error.data?.message || error.message || 'Network error'
+    };
+  }
 };
 
 
-
-
-
-
+// services/api.ts
 // services/api.ts
 export const executeWithdrawal = async (
   amount: number,
-  transactionHash: string,
   userId: number
 ): Promise<{
   success: boolean;
   message: string;
   user?: User;
+  transactionId?: number;
 }> => {
   return apiFetch('/api/withdraw/ton', {
     method: 'POST',
     body: JSON.stringify({ 
       amount,
-      transactionHash,
-      userId,   // ✅ pass from frontend
+      userId,
     }),
-    headers: { 'Content-Type': 'application/json' },
   });
 };
+
+export const updateWithdrawalTransaction = async (
+  transactionId: number,
+  transactionHash: string
+): Promise<{ success: boolean }> => {
+  return apiFetch('/api/withdraw/update-transaction', {
+    method: 'POST',
+    body: JSON.stringify({ transactionId, transactionHash }),
+  });
+};
+
 
 
 

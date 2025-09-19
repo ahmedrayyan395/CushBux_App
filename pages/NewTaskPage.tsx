@@ -273,31 +273,61 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
     }
   }, [selectedTier, checkSubscription, selectedLanguages, selectedCategory]);
   
+const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
 
   const handleAddFunds = async () => {
-      if (!wallet) {
-          tonConnectUI.openModal();
-          return;
-      }
+  if (!wallet) {
+    tonConnectUI.openModal();
+    return;
+  }
 
-      const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "1");
-      if (amountStr) {
-          const amount = parseFloat(amountStr);
-          if (!isNaN(amount) && amount > 0) {
-              alert(`Simulating deposit of ${amount} TON. This will be reflected in your balance.`);
-              const result = await depositAdCreditAPI(user.id, amount);
+  const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "1");
+  if (amountStr) {
+    const amount = parseFloat(amountStr);
+    if (!isNaN(amount) && amount > 0) {
+      try {
+        // Execute blockchain transaction
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 300,
+          messages: [
+            {
+              address: MERCHANT_WALLET_ADDRESS,
+              amount: Math.round(amount * 1e9).toString(), // Convert to nanoton
+            },
+          ],
+        };
+
+        // Show loading state
+        alert(`Please complete the ${amount} TON deposit in your wallet...`);
+
+        // Send transaction without waiting for it to complete
+        tonConnectUI.sendTransaction(transaction)
+          .then(async (resultBoc) => {
+            if (resultBoc?.boc) {
+              // Process successful transaction
+              const result = await depositAdCreditAPI(user.id, amount, resultBoc.boc);
 
               if (result.success) {
-                  setUser(result.user);
-                  alert("Deposit successful!");
+                setUser(result.user);
+                alert("Deposit successful! Your balance has been updated.");
               } else {
-                  alert("Deposit failed.");
+                alert("Deposit failed: " + (result.message || "Unknown error"));
               }
-          } else {
-              alert("Invalid amount entered.");
-          }
+            }
+          })
+          .catch((error) => {
+            console.error('Transaction error:', error);
+            alert("Transaction failed or was cancelled: " + error.message);
+          });
+      } catch (error) {
+        console.error('Deposit initiation error:', error);
+        alert("Failed to initiate deposit");
       }
-  };
+    } else {
+      alert("Invalid amount entered.");
+    }
+  }
+};
 
   const adBalance = user?.ad_credit || 0;
   const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;

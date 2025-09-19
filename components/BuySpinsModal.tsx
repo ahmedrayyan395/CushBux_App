@@ -2,19 +2,12 @@ import React, { useState } from 'react';
 import type { User } from '../types';
 import { buySpins } from '../services/api';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
-import {SPIN_STORE_PACKAGES} from '../constants';
+import { SPIN_STORE_PACKAGES } from '../constants';
 
+// Add your merchant wallet address here
+const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
 
-// Define packages locally since they're now in backend
-// const SPIN_STORE_PACKAGES = [
-//   { id: "spins_10", spins: 10, costTon: 0.1 },
-//   { id: "spins_25", spins: 25, costTon: 0.2 },
-//   { id: "spins_50", spins: 50, costTon: 0.35 },
-//   { id: "spins_100", spins: 100, costTon: 0.6 },
-//   { id: "spins_200", spins: 200, costTon: 1.0 }
-// ];
-
-const CONVERSION_RATE = 1000000; // 1 TON = 1,000,000 coins
+const CONVERSION_RATE = 1000000;
 
 interface BuySpinsModalProps {
     isOpen: boolean;
@@ -29,109 +22,115 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
     const [tonConnectUI] = useTonConnectUI();
     const wallet = useTonWallet();
 
+   const handlePurchase = async (packageId: string) => {
+  if (isLoading || !user) return;
 
-    
-    const handlePurchase = async (packageId: string) => {
-        if (isLoading || !user) return;
+  const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
+  if (!selectedPackage) {buySpins
+    alert("Invalid package selected.");
+    return;
+  }
 
-        const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
-        if (!selectedPackage) {
-            alert("Invalid package selected.");
-            return;
+  setIsLoading(packageId);
+
+  try {
+    if (paymentMethod === 'TON') {
+      const userTonBalance = user.ad_credit ? Number(user.ad_credit) : 0;
+
+      if (userTonBalance >= selectedPackage.costTon) {
+        // ✅ Use in-app TON balance
+        const result = await buySpins({
+          packageId,
+          paymentMethod: 'TON',
+          userId: user.id
+        });
+
+        if (result.success && result.user) {
+          setUser(result.user);
+          alert(`Purchased ${selectedPackage.spins} spins using your in-app TON balance!`);
+          onClose();
+        } else {
+          throw new Error(result.message || "Failed to process TON purchase.");
+        }
+      } else {
+        // ✅ Blockchain TON payment
+        if (!wallet) {
+          tonConnectUI.openModal();
+          setIsLoading(null);
+          return;
         }
 
-        setIsLoading(packageId);
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 300,
+          messages: [
+            {
+              address: MERCHANT_WALLET_ADDRESS,
+              amount: Math.round(selectedPackage.costTon * 1e9).toString(), // nanoton
+            },
+          ],
+        };
 
-        try {
-            if (paymentMethod === 'TON') {
-                // Check if user has sufficient TON in their in-app wallet
-                const userTonBalance = user.ad_credit ? Number(user.ad_credit) : 0;
-                
-                if (userTonBalance >= selectedPackage.costTon) {
-                    // Use in-app TON balance
-                    const result = await buySpins(packageId, 'TON', user.id);
-                    if (result.success && result.user) {
-                        setUser(result.user);
-                        alert(`Purchased ${selectedPackage.spins} spins using your TON balance!`);
-                        onClose();
-                    } else {
-                        throw new Error(result.message || "Failed to process TON purchase.");
-                    }
-                } else {
-                    // Insufficient in-app TON, require blockchain transaction
-                    if (!wallet) {
-                        tonConnectUI.openModal();
-                        setIsLoading(null);
-                        return;
-                    }
-
-                    // Execute real blockchain transaction
-                    const transaction = {
-                        validUntil: Math.floor(Date.now() / 1000) + 60,
-                        messages: [
-                            {
-                                address: process.env.REACT_APP_RECIPIENT_WALLET_ADDRESS!, // From your .env
-                                amount: (selectedPackage.costTon * 1e9).toString(), // Convert to nanoton
-                            },
-                        ],
-                    };
-                    
-                    // Send blockchain transaction
-                    const resultBoc = await tonConnectUI.sendTransaction(transaction);
-
-                    if (!resultBoc) {
-                        throw new Error("Transaction failed: no response from wallet.");
-                    }
-                    
-                    // After successful blockchain transaction, credit the spins
-                    const result = await buySpins(packageId, 'TON_BLOCKCHAIN', user.id);
-                    if (result.success && result.user) {
-                        setUser(result.user);
-                        alert(`Purchased ${selectedPackage.spins} spins! Blockchain transaction confirmed.`);
-                        onClose();
-                    } else {
-                        throw new Error(result.message || "Failed to credit spins after transaction.");
-                    }
-                }
-
-            } else { 
-                // COINS payment - purely in-app
-                const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
-                const userCoinBalance = user.coins ?? 0;
-                
-                if (userCoinBalance < costInCoins) {
-                    throw new Error("Insufficient coins. Complete more tasks to earn coins!");
-                }
-
-                const result = await buySpins(packageId, 'COINS', user.id);
-                if (result.success && result.user) {
-                    setUser(result.user);
-                    alert(`Purchased ${selectedPackage.spins} spins!`);
-                    onClose();
-                } else {
-                    throw new Error(result.message || "Purchase failed.");
-                }
-            }
-        } catch (error: any) {
-            console.error("Purchase failed:", error);
-            const errorMessage = (error instanceof Error && error.message.length < 100) 
-                ? error.message 
-                : "Transaction was cancelled or failed.";
-            
-            if (!errorMessage.toLowerCase().includes('user rejected') && 
-                !errorMessage.toLowerCase().includes('transaction was cancelled') &&
-                !errorMessage.toLowerCase().includes('user closed the modal')) {
-                alert(errorMessage);
-            }
-        } finally {
-            setIsLoading(null);
+        const resultBoc = await tonConnectUI.sendTransaction(transaction);
+        
+        if (!resultBoc?.boc) {
+          throw new Error("Transaction failed: no BOC received from wallet.");
         }
-    };
+
+        // ✅ Immediately close modal (don’t wait for backend)
+        onClose();
+        alert("✅ Payment sent! Spins will be credited after blockchain confirmation.");
+
+        // Fire-and-forget backend call
+        buySpins({
+          packageId,
+          paymentMethod: 'TON_BLOCKCHAIN',
+          userId: user.id,
+          transactionHash: resultBoc.boc
+        }).catch(err => console.error("Backend error:", err));
+      }
+    } else {
+      // ✅ COINS payment
+      const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
+      const userCoinBalance = user.coins ?? 0;
+
+      if (userCoinBalance < costInCoins) {
+        throw new Error("Insufficient coins. Complete more tasks to earn coins!");
+      }
+
+      const result = await buySpins({
+        packageId,
+        paymentMethod: 'COINS',
+        userId: user.id
+      });
+
+      if (result.success && result.user) {
+        setUser(result.user);
+        alert(`Purchased ${selectedPackage.spins} spins!`);
+        onClose();
+      } else {
+        throw new Error(result.message || "Purchase failed.");
+      }
+    }
+  } catch (error: any) {
+    console.error("Purchase failed:", error);
+    const errorMessage = error.message || "Transaction was cancelled or failed.";
+
+    if (
+      !errorMessage.toLowerCase().includes("rejected") &&
+      !errorMessage.toLowerCase().includes("cancelled") &&
+      !errorMessage.toLowerCase().includes("user closed")
+    ) {
+      alert(errorMessage.length > 100 ? "Transaction failed. Please try again." : errorMessage);
+    }
+  } finally {
+    setIsLoading(null);
+  }
+};
 
 
     const formatCoinCost = (costInCoins: number) => {
         if (costInCoins >= 1000000) {
-            return `${(costInCoins / 1000000).toLocaleString(undefined, {maximumFractionDigits: 1})}M Coins`;
+            return `${(costInCoins / 1000000).toFixed(1)}M Coins`;
         }
         if (costInCoins >= 1000) {
             return `${(costInCoins / 1000).toLocaleString()}K Coins`;
@@ -145,11 +144,11 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
             const canAfford = (user?.coins ?? 0) >= costInCoins;
             return { canAfford, costDisplay: formatCoinCost(costInCoins) };
         } else {
-            const userTonBalance = user?.ton ? Number(user.ad_credit) : 0;
+            const userTonBalance = user?.ad_credit ? Number(user.ad_credit) : 0;
             const canAffordWithInAppTon = userTonBalance >= pkg.costTon;
             return { 
                 canAfford: canAffordWithInAppTon, 
-                costDisplay: `${pkg.costTon.toLocaleString()} TON`,
+                costDisplay: `${pkg.costTon} TON`,
                 requiresBlockchain: !canAffordWithInAppTon
             };
         }
@@ -162,7 +161,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
             <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-lg border border-slate-700 p-6 space-y-6">
                 <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold text-white">Spin Store</h2>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white">&times;</button>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl">&times;</button>
                 </div>
 
                 {/* Balance Display */}
@@ -176,7 +175,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                     <div className="flex justify-between items-center">
                         <span className="text-slate-300">Your TON:</span>
                         <span className="text-blue-400 font-bold">
-                            {user?.ton ? Number(user.ad_credit).toFixed(3) : '0.000'} TON
+                            {user?.ad_credit ? Number(user.ad_credit).toFixed(3) : '0.000'} TON
                         </span>
                     </div>
                 </div>
@@ -215,6 +214,9 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                                     {requiresBlockchain && (
                                         <p className="text-xs text-blue-300 mt-1">Requires wallet payment</p>
                                     )}
+                                    {paymentMethod === 'TON' && !requiresBlockchain && (
+                                        <p className="text-xs text-green-300 mt-1">Using in-app balance</p>
+                                    )}
                                 </div>
                                 <div className={`px-4 py-2 rounded-lg font-semibold text-white min-w-[100px] text-center ${
                                     paymentMethod === 'COINS' 
@@ -237,6 +239,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                     {paymentMethod === 'TON' ? (
                         <p>
                             💡 Uses in-app TON first. If insufficient, requires wallet connection for blockchain payment.
+                            Blockchain payments include 10% bonus spins!
                         </p>
                     ) : (
                         <p>

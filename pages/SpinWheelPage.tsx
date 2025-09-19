@@ -76,68 +76,57 @@ const SpinWheelPage: React.FC<{
   }, [user?.spins]);
 
   const handleSpin = async (): Promise<boolean> => {
-    if (isSpinning || currentSpins.current <= 0 || !user) return false;
+  if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
-    // *** MODIFICATION START: We will now set the rotation *before* setting isSpinning to true.
-    let finalRotation = rotation;
-    let prizeResult: { success: boolean; prize: any; user: User | null } | null = null;
+  setIsSpinning(true); // Start spinning immediately for visual feedback
 
-    try {
-      const result = await spinWheel(user.id);
-      prizeResult = result; // Store result to use after animation
-
-      let prizeIndex = -1;
-      if (result.success && result.prize) {
-        prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
-      }
-
-      const numPrizes = SPIN_WHEEL_PRIZES.length;
-      const segmentAngle = 360 / numPrizes;
-      let stopAngle;
-
-      if (prizeIndex !== -1) {
-        const targetAngle = (prizeIndex * segmentAngle) + (segmentAngle / 2);
-        stopAngle = 270 - targetAngle;
-      } else {
-        stopAngle = Math.random() * 360;
-      }
-
-      const fullRotations = 5;
-      // Calculate the final rotation value
-      finalRotation = rotation + (fullRotations * 360) + stopAngle - (rotation % 360);
-
-      // 1. Set the final rotation value
-      setRotation(finalRotation);
-      // 2. THEN, set isSpinning to true. This triggers the effect in the child component.
-      setIsSpinning(true);
-      // *** MODIFICATION END ***
-
-      // Update user state immediately
-      if (result.success && result.user) {
-        setUser(result.user);
-        currentSpins.current = result.user.spins;
-        setRecentPrize(result.prize || null);
-      }
-
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          setIsSpinning(false); // This will "settle" the wheel
-          if (prizeResult?.success && prizeResult.prize?.value > 0) {
-            setShowPrizeNotification(prizeResult.prize);
-          }
-          resolve(prizeResult?.success ?? false);
-        }, 4000); // Match the CSS transition duration
-      });
-
-    } catch (error) {
-      console.error("An error occurred during the spin:", error);
+  try {
+    const result = await spinWheel(user.id);
+    
+    if (!result.success) {
       setIsSpinning(false);
-      // If an error occurs, reset rotation to its previous state
-      setRotation(rotation);
       return false;
     }
-  };
 
+    // Calculate rotation based on the actual prize
+    const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
+    const numPrizes = SPIN_WHEEL_PRIZES.length;
+    const segmentAngle = 360 / numPrizes;
+    const targetAngle = prizeIndex !== -1 ? 
+      (prizeIndex * segmentAngle) + (segmentAngle / 2) : 
+      Math.random() * 360;
+    
+    const fullRotations = 5;
+    const stopAngle = 270 - targetAngle;
+    const finalRotation = rotation + (fullRotations * 360) + stopAngle - (rotation % 360);
+
+    // Update rotation to the calculated final position
+    setRotation(finalRotation);
+
+    // Update user state
+    if (result.user) {
+      setUser(result.user);
+      currentSpins.current = result.user.spins;
+      setRecentPrize(result.prize || null);
+    }
+
+    // Wait for animation to complete
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    setIsSpinning(false);
+    
+    if (result.prize?.value > 0) {
+      setShowPrizeNotification(result.prize);
+    }
+    
+    return true;
+
+  } catch (error) {
+    console.error("An error occurred during the spin:", error);
+    setIsSpinning(false);
+    return false;
+  }
+};
   // ... (The rest of the component, including runAutoSpin, toggleAutoSpin, etc., remains the same)
   const runAutoSpin = async () => {
     if (!user) return;
@@ -225,11 +214,11 @@ const SpinWheelPage: React.FC<{
         
         <div className="flex flex-col items-center">
           <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">SPIN WHEEL</h1>
-          {recentPrize && (
+          {/* {recentPrize && (
             <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-full ${ recentPrize.type === 'none' ? 'bg-red-500/20 text-red-300' : recentPrize.type === 'coins' ? 'bg-yellow-500/20 text-yellow-300' : recentPrize.type === 'spins' ? 'bg-green-500/20 text-green-300' : 'bg-blue-500/20 text-blue-300' }`}>
               Last: {recentPrize.label}
             </div>
-           )}
+           )} */}
         </div>
         
         <div className="w-28 text-right cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsHistoryOpen(true)}>

@@ -11,7 +11,7 @@ import {
   getUserDailyTaskStatus,
   redeemPromoCode,
 } from '../services/api';
-import { ICONS, CONVERSION_RATE } from '../constants';
+import { ICONS, CONVERSION_RATE, TASK_TYPES } from '../constants';
 
 // Declare the ad SDK function
 declare global {
@@ -87,7 +87,7 @@ const DailyTaskItem: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number) => void;
+  onStart: (taskId: number, taskType?: string) => void;
   onClaim: (taskId: number) => void;
   buttonState: { text: string; disabled: boolean; variant: string };
 }> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
@@ -98,11 +98,14 @@ const DailyTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id);
-      window.open(task.link, '_blank'); // open in new tab
+      onStart(task.id, task.type); // Pass task type here
+      if (task.type !== TASK_TYPES.AD) {
+        // window.open(task.link, '_blank'); // open in new tab for non-ad tasks
+      }
     }
   };
-const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
+
+  const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
 
   return (
     <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-between">
@@ -114,12 +117,11 @@ const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
           <h3 className="font-semibold text-white truncate" title={task.title}>{task.title}</h3>
           <p className="text-sm text-slate-400">{description}</p>
           <p className="text-sm text-green-400 mt-1">+{(reward).toLocaleString()} Coins</p>
-
         </div>
       </div>
       <a
-        href={task.link}
-        target="_blank"
+        href={task.type === TASK_TYPES.AD ? '#' : task.link}
+        target={task.type === TASK_TYPES.AD ? '_self' : '_blank'}
         rel="noopener noreferrer"
         onClick={handleClick}
         className={`${buttonClass} text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors flex-shrink-0 ml-2 ${
@@ -139,7 +141,7 @@ const TaskSection: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number) => void;
+  onStart: (taskId: number, taskType?: string) => void;
   onClaim: (taskId: number) => void;
   getTaskButtonState: (taskId: number) => { text: string; disabled: boolean; variant: string };
   TaskComponent?: React.ComponentType<any>;
@@ -159,8 +161,8 @@ const TaskSection: React.FC<{
                 icon={icon}
                 description={description}
                 buttonClass={buttonClass}
-                onStart={() => onStart(task.id)}
-                onClaim={() => onClaim(task.id)}
+                onStart={onStart}
+                onClaim={onClaim}
                 buttonState={buttonState}
               />
             );
@@ -210,33 +212,67 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     }
   };
 
-  // ---- Daily Task Logic ----
-  const handleDailyTaskStart = async (taskId: number) => {
-    setLoadingDailyTasks(prev => new Set(prev).add(taskId));
-
-    try {
-      const result = await startDailyTask(user.id, taskId);
-
-      if (result.success) {
-        setDailyTaskStatuses(prev => ({
-          ...prev,
-          [taskId]: { started: true, completed: false, claimed: false }
-        }));
-      } else {
-        alert(result.message);
+  // ---- Ad handling function ----
+  const showAdIfAvailable = async (): Promise<boolean> => {
+    if (typeof window.show_9692552 === 'function') {
+      try {
+        await window.show_9692552();
+        return true;
+      } catch (e) {
+        console.error("Ad failed during auto-spin", e);
+        return false;
       }
-    } catch (error) {
-      console.error("Error starting daily task:", error);
-      alert("Failed to start task");
-    } finally {
-      setLoadingDailyTasks(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(taskId);
-        return newSet;
-      });
     }
+    return false;
   };
 
+  // ---- Daily Task Logic ----
+  const handleDailyTaskStart = async (taskId: number, taskType?: string) => {
+  setLoadingDailyTasks(prev => new Set(prev).add(taskId));
+
+  try {
+    // Find the daily task to get its type
+    const task = dailyTasks.find(t => t.id === taskId);
+    const actualTaskType = taskType || task?.taskType;
+    
+    // Show ad for ad-type tasks before starting
+if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
+        const adShown = await showAdIfAvailable();
+      if (!adShown) {
+        alert("Ad failed to load. Please try again.");
+        return;
+      }
+    }
+
+    const result = await startDailyTask(user.id, taskId);
+
+    if (result.success) {
+      setDailyTaskStatuses(prev => ({
+        ...prev,
+        [taskId]: { started: true, completed: false, claimed: false }
+      }));
+      
+      // For ad tasks, automatically mark as completed after ad is shown
+      if (actualTaskType === TASK_TYPES.AD) {
+        // Small delay to allow state update before claiming
+        setTimeout(() => {
+          handleDailyTaskClaim(taskId);
+        }, 500);
+      }
+    } else {
+      alert(result.message);
+    }
+  } catch (error) {
+    console.error("Error starting daily task:", error);
+    alert("Failed to start task");
+  } finally {
+    setLoadingDailyTasks(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(taskId);
+      return newSet;
+    });
+  }
+};
   const handleDailyTaskClaim = async (taskId: number) => {
     setLoadingDailyTasks(prev => new Set(prev).add(taskId));
 
@@ -280,18 +316,36 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   );
 
   // ---- Campaign Tasks ----
-  const handleTaskStart = async (taskId: number) => {
+  const handleTaskStart = async (taskId: number, taskType?: string) => {
     setLoadingTasks(prev => new Set(prev).add(taskId));
     try {
+      // Show ad for ad-type tasks before starting
+      if (taskType === TASK_TYPES.AD) {
+        const adShown = await showAdIfAvailable();
+        if (!adShown) {
+          alert("Ad failed to load. Please try again.");
+          return;
+        }
+      }
+
       const result = await startTask(user.id, taskId);
       if (result.success) {
         setTaskStatuses(prev => ({
           ...prev,
           [taskId]: { started: true, completed: false }
         }));
+        
         const task = campaigns.find(t => t.id === taskId);
-        if (task) {
+        if (task && task.type !== TASK_TYPES.AD) {
           window.open(task.link, '_blank');
+        }
+        
+        // For ad tasks, automatically mark as completed after ad is shown
+        if (taskType === TASK_TYPES.AD) {
+          // Small delay to allow state update before claiming
+          setTimeout(() => {
+            handleTaskClaim(taskId);
+          }, 500);
         }
       } else {
         alert(result.message);

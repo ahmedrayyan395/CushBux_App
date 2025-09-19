@@ -85,6 +85,16 @@ export const ICONS = {
 };
 
 
+export const MERCHANT_WALLET_ADDRESS='UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0'
+
+// constants.ts
+export const TASK_TYPES = {
+  AD: 'ad',
+  GAME: 'game',
+  SOCIAL: 'social',
+  PARTNER: 'partner'
+} as const;
+
 // constants/index.ts
 export const SPIN_WHEEL_PRIZES = [
   {
@@ -303,8 +313,8 @@ export const MOCK_PROMO_CODES: PromoCode[] = [
 ];
 
 export const CONVERSION_RATE = 1000000;
-export const MIN_WITHDRAWAL_TON=1.1;
-export const RECIPIENT_WALLET_ADDRESS = 'UQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAD'; // Placeholder address
+export const MIN_WITHDRAWAL_TON=0.001;
+export const RECIPIENT_WALLET_ADDRESS = 'UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0'; // Placeholder address
 
 
 // As per the user's latest request to remove TON and fix the wheel,

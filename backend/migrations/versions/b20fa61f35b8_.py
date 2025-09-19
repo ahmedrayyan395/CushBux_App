@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: b98bcc7c7b18
+Revision ID: b20fa61f35b8
 Revises: 
-Create Date: 2025-09-13 10:22:17.837221
+Create Date: 2025-09-19 17:25:38.224728
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b98bcc7c7b18'
+revision = 'b20fa61f35b8'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -124,9 +124,10 @@ def upgrade():
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('amount', sa.Numeric(precision=20, scale=9), nullable=False),
     sa.Column('transaction_type', sa.Enum('WITHDRAWAL', 'DEPOSIT', name='transactiontype'), nullable=False),
-    sa.Column('currency', sa.Enum('TON', 'COINS', name='transactioncurrency'), nullable=False),
+    sa.Column('currency', sa.Enum('TON', 'COINS', 'SPINS', name='transactioncurrency'), nullable=False),
     sa.Column('status', sa.Enum('COMPLETED', 'PENDING', 'FAILED', name='transactionstatus'), nullable=False),
     sa.Column('description', sa.String(length=255), nullable=True),
+    sa.Column('transaction_id_on_blockchain', sa.String(length=255), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')

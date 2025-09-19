@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { User, Transaction } from '../types';
-import { CONVERSION_RATE, MIN_WITHDRAWAL_TON } from '../constants';
-import { fetchTransactions, executeWithdrawal } from '../services/api';
+import { CONVERSION_RATE, MIN_WITHDRAWAL_TON, MERCHANT_WALLET_ADDRESS } from '../constants';
+import { fetchTransactions, executeWithdrawal, updateWithdrawalTransaction } from '../services/api';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 
 const TransactionRow: React.FC<{ tx: Transaction }> = ({ tx }) => {
@@ -32,8 +32,8 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
 
-  const userTonBalance = user?.ton ? Number(user.ton) : 0;
-  const minWithdrawal = MIN_WITHDRAWAL_TON || 1.10;
+  const userTonBalance = user?.ad_credit ? Number(user.ad_credit) : 0; // Changed from user.ton to user.ad_credit
+  const minWithdrawal = MIN_WITHDRAWAL_TON || 0.010;
   const maxWithdrawal = userTonBalance;
   const canWithdraw = userTonBalance >= minWithdrawal;
 
@@ -41,66 +41,74 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     fetchTransactions().then(setTransactions);
   }, []);
 
- 
-const handleWithdraw = async () => {
-  if (!wallet || !user || !withdrawAmount) return;
-  
-  const amount = parseFloat(withdrawAmount);
-  if (isNaN(amount) || amount < minWithdrawal || amount > userTonBalance) {
-    alert(`Please enter a valid amount between ${minWithdrawal} and ${userTonBalance} TON`);
-    return;
-  }
-
-  setIsWithdrawing(true);
-
-  try {
-    // Build transaction to send TON to the user's connected wallet
-    const transaction = {
-      validUntil: Math.floor(Date.now() / 1000) + 60,
-      messages: [
-        {
-          address: wallet.account.address, // ✅ user's wallet
-          amount: (amount * 1e9).toString(), // ✅ convert TON → nanoton
-        },
-      ],
-    };
+  const handleWithdraw = async () => {
+    if (!wallet || !user || !withdrawAmount) return;
     
-    // Send blockchain transaction
-    const txResponse = await tonConnectUI.sendTransaction(transaction);
-
-    if (!txResponse || !txResponse.boc) {
-      throw new Error("Transaction failed: no response from wallet.");
+    const amount = parseFloat(withdrawAmount);
+    if (isNaN(amount) || amount < minWithdrawal || amount > userTonBalance) {
+      alert(`Please enter a valid amount between ${minWithdrawal} and ${userTonBalance} TON`);
+      return;
     }
 
-    // Update backend with withdrawal info
-    const result = await executeWithdrawal(amount, txResponse.boc, user.id);
-    if (result.success && result.user) {
+    setIsWithdrawing(true);
+
+    try {
+      // First, execute the withdrawal on our backend (deduct from user balance)
+      const result = await executeWithdrawal(amount, user.id);
+      
+      if (!result.success || !result.user) {
+        throw new Error(result.message || "Failed to process withdrawal");
+      }
+
+      // Update user balance immediately
       setUser(result.user);
+
+      // Build transaction to send TON FROM merchant wallet TO user's wallet
+      const transaction = {
+        validUntil: Math.floor(Date.now() / 1000) + 300,
+        messages: [
+          {
+            address: wallet.account.address, // ✅ User's wallet address
+            amount: Math.round(amount * 1e9).toString(), // ✅ Convert TON to nanoton
+          },
+        ],
+      };
+
+      // Send blockchain transaction (this should be initiated by the merchant wallet)
+      // Note: This part requires the merchant wallet to be connected and have sufficient funds
+      const txResponse = await tonConnectUI.sendTransaction(transaction);
+
+      if (!txResponse?.boc) {
+        throw new Error("Transaction failed: no response from wallet.");
+      }
+
+      // Update transaction record with blockchain hash
+      await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
+
       setWithdrawAmount('');
       fetchTransactions().then(setTransactions);
-      alert(`Successfully withdrew ${amount} TON to your wallet!`);
-    } else {
-      throw new Error(result.message || "Failed to update balance after withdrawal.");
+      alert(`Successfully withdrew ${amount} TON to your wallet! Transaction hash: ${txResponse.boc.slice(0, 20)}...`);
+
+    } catch (error: any) {
+      console.error("Withdrawal failed:", error);
+      const errorMessage = error.message || "Transaction was cancelled or failed.";
+      
+      // Revert the balance if the blockchain transaction failed
+      if (user) {
+        const revertedUser = { ...user, ad_credit: user.ad_credit + amount };
+        setUser(revertedUser);
+      }
+
+      if (!errorMessage.toLowerCase().includes('user rejected') && 
+          !errorMessage.toLowerCase().includes('transaction was cancelled')) {
+        alert(errorMessage);
+      }
+    } finally {
+      setIsWithdrawing(false);
     }
-  } catch (error: any) {
-    console.error("Withdrawal failed:", error);
-    const errorMessage = (error instanceof Error && error.message.length < 100) 
-      ? error.message 
-      : "Transaction was cancelled or failed.";
-    
-    if (!errorMessage.toLowerCase().includes('user rejected') && 
-        !errorMessage.toLowerCase().includes('transaction was cancelled')) {
-      alert(errorMessage);
-    }
-  } finally {
-    setIsWithdrawing(false);
-  }
-};
+  };
 
-
-
-
-
+  
 
   const handleMaxWithdraw = () => {
     setWithdrawAmount(userTonBalance.toFixed(6));

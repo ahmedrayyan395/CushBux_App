@@ -6,12 +6,17 @@ import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampa
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import ProgressBar from '../components/ProgressBar';
 
-const MyPartnerTasksComponent: React.FC = () => {
+
+interface MyTasksComponentProps {
+  userid: number;
+}
+
+const MyPartnerTasksComponent:  React.FC<MyTasksComponentProps> = ({ userid }) => {
   const [campaigns, setCampaigns] = useState<PartnerCampaign[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUserCampaignsAPI().then(data => {
+    fetchUserCampaignsAPI(userid).then(data => {
       setCampaigns(data);
       setLoading(false);
     });
@@ -239,29 +244,61 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
     }
   }, [selectedTier, selectedLevel, selectedLanguages]);
 
-  const handleAddFunds = async () => {
-      if (!wallet) {
-          tonConnectUI.openModal();
-          return;
-      }
-
-      const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "10");
-      if (amountStr) {
-          const amount = parseFloat(amountStr);
-          if (!isNaN(amount) && amount > 0) {
-              alert(`Simulating deposit of ${amount} TON. This will be reflected in your balance.`);
-              const result = await depositAdCreditAPI(amount);
-              if (result.success) {
-                  setUser(result.user);
-                  alert("Deposit successful!");
-              } else {
-                  alert("Deposit failed.");
-              }
-          } else {
-              alert("Invalid amount entered.");
-          }
-      }
-  };
+ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
+ 
+   const handleAddFunds = async () => {
+   if (!wallet) {
+     tonConnectUI.openModal();
+     return;
+   }
+ 
+   const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "1");
+   if (amountStr) {
+     const amount = parseFloat(amountStr);
+     if (!isNaN(amount) && amount > 0) {
+       try {
+         // Execute blockchain transaction
+         const transaction = {
+           validUntil: Math.floor(Date.now() / 1000) + 300,
+           messages: [
+             {
+               address: MERCHANT_WALLET_ADDRESS,
+               amount: Math.round(amount * 1e9).toString(), // Convert to nanoton
+             },
+           ],
+         };
+ 
+         // Show loading state
+         alert(`Please complete the ${amount} TON deposit in your wallet...`);
+ 
+         // Send transaction without waiting for it to complete
+         tonConnectUI.sendTransaction(transaction)
+           .then(async (resultBoc) => {
+             if (resultBoc?.boc) {
+               // Process successful transaction
+               const result = await depositAdCreditAPI(user.id, amount, resultBoc.boc);
+ 
+               if (result.success) {
+                 setUser(result.user);
+                 alert("Deposit successful! Your balance has been updated.");
+               } else {
+                 alert("Deposit failed: " + (result.message || "Unknown error"));
+               }
+             }
+           })
+           .catch((error) => {
+             console.error('Transaction error:', error);
+             alert("Transaction failed or was cancelled: " + error.message);
+           });
+       } catch (error) {
+         console.error('Deposit initiation error:', error);
+         alert("Failed to initiate deposit");
+       }
+     } else {
+       alert("Invalid amount entered.");
+     }
+   }
+ };
 
   const adBalance = user?.ad_credit || 0;
   const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
@@ -354,7 +391,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
               />
             </>
         ) : (
-            <MyPartnerTasksComponent key={campaignsVersion} />
+            <MyPartnerTasksComponent key={campaignsVersion} userid={user.id}/>
         )}
       </main>
 

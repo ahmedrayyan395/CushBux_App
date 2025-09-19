@@ -114,28 +114,23 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
     drawWheel();
   }, [prizes]);
 
-  // *** MODIFICATION START: More robust animation effect ***
-  useEffect(() => {
-    const wheel = wheelRef.current;
-    if (!wheel) return;
+ useEffect(() => {
+  const wheel = wheelRef.current;
+  if (!wheel) return;
 
-    if (isSpinning) {
-      // 1. Set the transition style for the animation.
-      wheel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)';
-      // 2. Apply the final rotation value. The browser will animate to this state.
-      wheel.style.transform = `rotate(${rotation}deg)`;
-      // 3. Add visual flair.
-      wheel.style.boxShadow = '0 0 50px rgba(255, 215, 0, 0.7)';
-    } else {
-      // When not spinning, we want to "settle" the wheel at its final position.
-      // 1. Remove the transition so that any future rotation changes are instant.
-      wheel.style.transition = 'none';
-      // 2. Ensure the transform is locked to the final rotation value.
-      wheel.style.transform = `rotate(${rotation}deg)`;
-      // 3. Reset the visual flair.
-      wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
-    }
-  }, [rotation, isSpinning]);
+  if (isSpinning) {
+    wheel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)';
+    wheel.style.transform = `rotate(${rotation}deg)`;
+    wheel.style.boxShadow = '0 0 50px rgba(255, 215, 0, 0.7)';
+  } else {
+    // When spinning stops, ensure we're at the exact rotation
+    wheel.style.transition = 'none';
+    wheel.style.transform = `rotate(${rotation % 360}deg)`; // Normalize to 0-360 degrees
+    wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
+  }
+}, [rotation, isSpinning]);
+  
+  
   // *** MODIFICATION END ***
 
   const handleTouchStart = (e: React.TouchEvent) => {
