@@ -202,7 +202,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               />
             </div>
 
-            <div>
+            {/* <div>
               <label htmlFor="ad_network_id" className="block text-sm font-medium text-slate-300 mb-2">Ad Network ID (optional)</label>
               <input
                 id="ad_network_id"
@@ -212,7 +212,9 @@ const handleSubmit = async (e: React.FormEvent) => {
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"
                 placeholder="Ad Network ID"
               />
-            </div>
+            </div> */}
+
+            
           </div>
 
           <div className="pt-2">

@@ -1,101 +1,284 @@
-import React, { useState, useEffect } from 'react';
-import type { User, Transaction } from '../types';
-import { CONVERSION_RATE, MIN_WITHDRAWAL_TON, MERCHANT_WALLET_ADDRESS } from '../constants';
-import { fetchTransactions, executeWithdrawal, updateWithdrawalTransaction } from '../services/api';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import type { User, Transaction, TransactionsFilters, TransactionsResponse } from '../types';
+import { CONVERSION_RATE, MIN_WITHDRAWAL_TON } from '../constants';
+import { fetchWithdrawalTransactions, executeWithdrawal, updateWithdrawalTransaction } from '../services/api';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 
-const TransactionRow: React.FC<{ tx: Transaction }> = ({ tx }) => {
+// ... (keep all your existing components: TransactionRow, TransactionsFilters, Pagination)
+
+const TransactionRow: React.FC<{ tx: Transaction }> = React.memo(({ tx }) => {
   const statusColor = {
-    Completed: 'text-green-500',
-    Pending: 'text-yellow-500',
-    Failed: 'text-red-500',
-  }[tx.status];
+    COMPLETED: 'text-green-500',
+    PENDING: 'text-yellow-500',
+    FAILED: 'text-red-500',
+  }[tx.status] || 'text-gray-500';
+
+  const formattedDate = tx.date || new Date(tx.created_at).toLocaleDateString();
 
   return (
     <div className="flex justify-between items-center py-3 border-b border-slate-700/50">
-      <div>
-        <p className="font-semibold text-white">{tx.type}</p>
-        <p className="text-sm text-slate-400">{tx.date}</p>
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-white truncate">{tx.description}</p>
+        <p className="text-sm text-slate-400">{formattedDate}</p>
+        {tx.transaction_id_on_blockchain && (
+          <p className="text-xs text-blue-400 mt-1 truncate">
+            TX: {tx.transaction_id_on_blockchain.slice(0, 8)}...{tx.transaction_id_on_blockchain.slice(-8)}
+          </p>
+        )}
       </div>
-      <div className="text-right">
-        <p className="font-bold text-white">{tx.amount.toFixed(2)} {tx.currency}</p>
+      <div className="text-right flex-shrink-0 ml-4">
+        <p className="font-bold text-white">{Math.abs(tx.amount).toFixed(6)} {tx.currency}</p>
         <p className={`text-sm font-medium ${statusColor}`}>{tx.status}</p>
+      </div>
+    </div>
+  );
+});
+
+TransactionRow.displayName = 'TransactionRow';
+
+// Filters Component
+const TransactionsFilters: React.FC<{
+  filters: TransactionsFilters;
+  onFiltersChange: (filters: TransactionsFilters) => void;
+}> = ({ filters, onFiltersChange }) => {
+  return (
+    <div className="bg-slate-800 p-4 rounded-xl mb-4">
+      <h3 className="text-white font-semibold mb-3">Filters</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <select
+          value={filters.status || ''}
+          onChange={(e) => onFiltersChange({ ...filters, status: e.target.value || undefined, page: 1 })}
+          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
+        >
+          <option value="">All Status</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="PENDING">Pending</option>
+          <option value="FAILED">Failed</option>
+        </select>
+
+        <select
+          value={filters.currency || ''}
+          onChange={(e) => onFiltersChange({ ...filters, currency: e.target.value || undefined, page: 1 })}
+          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
+        >
+          <option value="">All Currencies</option>
+          <option value="TON">TON</option>
+          <option value="COINS">Coins</option>
+        </select>
+
+        <input
+          type="date"
+          value={filters.startDate || ''}
+          onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined, page: 1 })}
+          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
+          placeholder="Start Date"
+        />
+
+        <input
+          type="date"
+          value={filters.endDate || ''}
+          onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined, page: 1 })}
+          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
+          placeholder="End Date"
+        />
       </div>
     </div>
   );
 };
 
+// Pagination Component
+const Pagination: React.FC<{
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}> = ({ currentPage, totalPages, onPageChange }) => {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="flex justify-center items-center space-x-2 mt-6">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        className="px-3 py-1 bg-slate-700 text-white rounded disabled:opacity-50"
+      >
+        ←
+      </button>
+
+      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+        const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+        if (page > totalPages) return null;
+        
+        return (
+          <button
+            key={page}
+            onClick={() => onPageChange(page)}
+            className={`px-3 py-1 rounded ${
+              currentPage === page
+                ? 'bg-green-500 text-white'
+                : 'bg-slate-700 text-white hover:bg-slate-600'
+            }`}
+          >
+            {page}
+          </button>
+        );
+      })}
+
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className="px-3 py-1 bg-slate-700 text-white rounded disabled:opacity-50"
+      >
+        →
+      </button>
+
+      <span className="text-slate-400 text-sm">
+        Page {currentPage} of {totalPages}
+      </span>
+    </div>
+  );
+};
+
+
+
 const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void }> = ({ user, setUser }) => {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionsData, setTransactionsData] = useState<TransactionsResponse>({
+    transactions: [],
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
+  const [filters, setFilters] = useState<TransactionsFilters>({
+    page: 1,
+    limit: 20,
+  });
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [isWithdrawing, setIsWithdrawing] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
 
-  const userTonBalance = user?.ad_credit ? Number(user.ad_credit) : 0; // Changed from user.ton to user.ad_credit
+  // Calculate total TON balance (TON + converted coins)
+  const totalTonBalance = useMemo(() => {
+    if (!user) return 0;
+    
+    const tonBalance = user.ton ? Number(user.ton) : 0;
+    const coinsBalance = user.coins ? Number(user.coins) : 0;
+    const coinsInTon = coinsBalance / CONVERSION_RATE;
+    
+    return tonBalance + coinsInTon;
+  }, [user]);
+
+  const availableTonBalance = useMemo(() => {
+    if (!user) return 0;
+    return user.ton ? Number(user.ton) : 0;
+  }, [user]);
+
+  const availableCoinsBalance = useMemo(() => {
+    if (!user) return 0;
+    return user.coins ? Number(user.coins) : 0;
+  }, [user]);
+
   const minWithdrawal = MIN_WITHDRAWAL_TON || 0.010;
-  const maxWithdrawal = userTonBalance;
-  const canWithdraw = userTonBalance >= minWithdrawal;
+
+  const loadTransactions = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchWithdrawalTransactions(filters);
+      setTransactionsData(data);
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filters]);
 
   useEffect(() => {
-    fetchTransactions().then(setTransactions);
-  }, []);
+    loadTransactions();
+  }, [loadTransactions]);
+
+  const validateWithdrawalAmount = (amount: number): { isValid: boolean; message: string } => {
+    if (isNaN(amount) || amount <= 0) {
+      return { isValid: false, message: "Please enter a valid amount" };
+    }
+
+    if (amount < minWithdrawal) {
+      return { isValid: false, message: `Minimum withdrawal is ${minWithdrawal} TON` };
+    }
+
+    if (amount > totalTonBalance) {
+      return { isValid: false, message: "Insufficient total balance" };
+    }
+
+    // Check if user has enough TON, otherwise check if they have enough coins to convert
+    if (amount > availableTonBalance) {
+      const remainingTonNeeded = amount - availableTonBalance;
+      const coinsNeeded = remainingTonNeeded * CONVERSION_RATE;
+      
+      if (coinsNeeded > availableCoinsBalance) {
+        return { 
+          isValid: false, 
+          message: `Insufficient balance. You need ${remainingTonNeeded.toFixed(6)} more TON (or ${coinsNeeded.toFixed(0)} coins)` 
+        };
+      }
+    }
+
+    return { isValid: true, message: "" };
+  };
 
   const handleWithdraw = async () => {
     if (!wallet || !user || !withdrawAmount) return;
     
     const amount = parseFloat(withdrawAmount);
-    if (isNaN(amount) || amount < minWithdrawal || amount > userTonBalance) {
-      alert(`Please enter a valid amount between ${minWithdrawal} and ${userTonBalance} TON`);
+    const validation = validateWithdrawalAmount(amount);
+    
+    if (!validation.isValid) {
+      alert(validation.message);
       return;
     }
 
     setIsWithdrawing(true);
 
     try {
-      // First, execute the withdrawal on our backend (deduct from user balance)
       const result = await executeWithdrawal(amount, user.id);
       
       if (!result.success || !result.user) {
         throw new Error(result.message || "Failed to process withdrawal");
       }
 
-      // Update user balance immediately
       setUser(result.user);
 
-      // Build transaction to send TON FROM merchant wallet TO user's wallet
       const transaction = {
         validUntil: Math.floor(Date.now() / 1000) + 300,
         messages: [
           {
-            address: wallet.account.address, // ✅ User's wallet address
-            amount: Math.round(amount * 1e9).toString(), // ✅ Convert TON to nanoton
+            address: wallet.account.address,
+            amount: Math.round(amount * 1e9).toString(),
           },
         ],
       };
 
-      // Send blockchain transaction (this should be initiated by the merchant wallet)
-      // Note: This part requires the merchant wallet to be connected and have sufficient funds
       const txResponse = await tonConnectUI.sendTransaction(transaction);
 
       if (!txResponse?.boc) {
         throw new Error("Transaction failed: no response from wallet.");
       }
 
-      // Update transaction record with blockchain hash
-      await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
+      if (result.transactionId) {
+        await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
+      }
 
       setWithdrawAmount('');
-      fetchTransactions().then(setTransactions);
-      alert(`Successfully withdrew ${amount} TON to your wallet! Transaction hash: ${txResponse.boc.slice(0, 20)}...`);
+      await loadTransactions();
+      alert(`Successfully withdrew ${amount} TON to your wallet!`);
 
     } catch (error: any) {
       console.error("Withdrawal failed:", error);
       const errorMessage = error.message || "Transaction was cancelled or failed.";
       
-      // Revert the balance if the blockchain transaction failed
       if (user) {
-        const revertedUser = { ...user, ad_credit: user.ad_credit + amount };
+        // Revert the balance - we'll need to handle this properly in the backend
+        const revertedUser = { ...user };
         setUser(revertedUser);
       }
 
@@ -108,23 +291,49 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     }
   };
 
-  
-
   const handleMaxWithdraw = () => {
-    setWithdrawAmount(userTonBalance.toFixed(6));
+    setWithdrawAmount(totalTonBalance.toFixed(6));
   };
 
   const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
   return (
     <div className="space-y-8">
-      {/* Balance Section */}
-      <div className="bg-slate-800 p-6 rounded-xl text-center">
-        <p className="text-slate-300">Your TON Balance</p>
-        <p className="text-4xl font-bold text-white my-1">{userTonBalance.toFixed(6)} TON</p>
-        <p className="text-green-400 font-semibold">
-          ≈ {(userTonBalance * CONVERSION_RATE).toLocaleString()} Coins
-        </p>
+      {/* Balance Section - Enhanced */}
+      <div className="bg-slate-800 p-6 rounded-xl">
+        <h2 className="text-2xl font-bold text-white text-center mb-4">Your Balances</h2>
+        
+        {/* Total TON Balance */}
+        <div className="text-center mb-6">
+          <p className="text-slate-300">Total Available Balance</p>
+          <p className="text-4xl font-bold text-white my-1">{totalTonBalance.toFixed(6)} TON</p>
+          <p className="text-green-400 font-semibold">
+            ≈ {(totalTonBalance * CONVERSION_RATE).toLocaleString()} Coins
+          </p>
+        </div>
+
+        {/* Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          <div className="bg-slate-700/50 p-3 rounded-lg">
+            <p className="text-slate-300">TON Balance</p>
+            <p className="text-blue-400 font-bold text-lg">{availableTonBalance.toFixed(6)} TON</p>
+          </div>
+          
+          <div className="bg-slate-700/50 p-3 rounded-lg">
+            <p className="text-slate-300">Coins Balance</p>
+            <p className="text-yellow-400 font-bold text-lg">
+              {availableCoinsBalance.toLocaleString()} Coins
+            </p>
+            <p className="text-green-400 text-sm">
+              ≈ {(availableCoinsBalance / CONVERSION_RATE).toFixed(6)} TON
+            </p>
+          </div>
+        </div>
+
+        {/* Conversion Info */}
+        <div className="text-xs text-slate-400 text-center mt-4">
+          <p>💱 Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins</p>
+        </div>
       </div>
 
       {/* Withdrawal Form */}
@@ -148,7 +357,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
               onChange={(e) => setWithdrawAmount(e.target.value)}
               placeholder={`Min: ${minWithdrawal} TON`}
               min={minWithdrawal}
-              max={userTonBalance}
+              max={totalTonBalance}
               step="0.001"
               className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none"
               disabled={!wallet || isWithdrawing}
@@ -163,7 +372,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
           </div>
           <div className="flex justify-between text-xs text-slate-400">
             <span>Min: {minWithdrawal} TON</span>
-            <span>Available: {userTonBalance.toFixed(6)} TON</span>
+            <span>Available: {totalTonBalance.toFixed(6)} TON</span>
           </div>
         </div>
 
@@ -187,7 +396,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
           <button
             onClick={handleWithdraw}
-            disabled={!wallet || !withdrawAmount || isWithdrawing || parseFloat(withdrawAmount) < minWithdrawal || parseFloat(withdrawAmount) > userTonBalance}
+            disabled={!wallet || !withdrawAmount || isWithdrawing}
             className="w-full bg-green-500 text-white font-bold py-3 rounded-lg transition-colors hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {isWithdrawing ? (
@@ -210,12 +419,37 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
       {/* Transaction History */}
       <div>
-        <h2 className="text-xl font-bold mb-4 text-white">Withdrawal History</h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-white">Withdrawal History</h2>
+          <span className="text-slate-400 text-sm">
+            {transactionsData.total} total transactions
+          </span>
+        </div>
+
+        <TransactionsFilters filters={filters} onFiltersChange={setFilters} />
+
         <div className="bg-slate-800 p-4 rounded-xl">
-          {transactions.length > 0 ? (
-            transactions.map(tx => <TransactionRow key={tx.id} tx={tx} />)
+          {isLoading ? (
+            <div className="text-center py-8">
+              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="text-slate-400 mt-2">Loading transactions...</p>
+            </div>
+          ) : transactionsData.transactions.length > 0 ? (
+            <>
+              <div className="max-h-96 overflow-y-auto">
+                {transactionsData.transactions.map(tx => (
+                  <TransactionRow key={tx.id} tx={tx} />
+                ))}
+              </div>
+              
+              <Pagination
+                currentPage={transactionsData.page}
+                totalPages={transactionsData.totalPages}
+                onPageChange={(page) => setFilters(prev => ({ ...prev, page }))}
+              />
+            </>
           ) : (
-            <p className="text-center text-slate-400 py-4">No withdrawal transactions yet.</p>
+            <p className="text-center text-slate-400 py-8">No withdrawal transactions found.</p>
           )}
         </div>
       </div>
@@ -224,8 +458,8 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl">
         <h3 className="text-yellow-400 font-bold mb-2">⚠️ Important Notice</h3>
         <p className="text-yellow-300 text-sm">
-          Withdrawals are processed on the TON blockchain. Please ensure you're connected to the correct wallet address.
-          Transactions may take a few minutes to confirm.
+          Withdrawals will first use your TON balance, then automatically convert coins to TON if needed.
+          Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins.
         </p>
       </div>
     </div>

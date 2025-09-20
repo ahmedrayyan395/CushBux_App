@@ -77,6 +77,38 @@ export interface Task {
 // }
 
 
+export interface TransactionsResponse {
+  transactions: Transaction[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface TransactionsFilters {
+  page?: number;
+  limit?: number;
+  status?: string;
+  currency?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+
+
+export interface Transaction {
+  id: number;
+  user_id: number;
+  amount: number;
+  transaction_type: string;
+  currency: string;
+  status: string;
+  description: string;
+  transaction_id_on_blockchain?: string;
+  created_at: string;
+  date?: string; // For frontend display
+}
+
 // types.ts
 export interface DailyTask {
   id: number;
@@ -105,14 +137,14 @@ export interface Quest {
   totalProgress: number;
 }
 
-export interface Transaction {
-  id: string;
-  type: 'Withdrawal' | 'Deposit';
-  amount: number;
-  currency: 'TON' | 'Coins';
-  date: string;
-  status: 'Completed' | 'Pending' | 'Failed';
-}
+// export interface Transaction {
+//   id: string;
+//   type: 'Withdrawal' | 'Deposit';
+//   amount: number;
+//   currency: 'TON' | 'Coins';
+//   date: string;
+//   status: 'Completed' | 'Pending' | 'Failed';
+// }
 
 export interface CompletionTier {
   completions: number;

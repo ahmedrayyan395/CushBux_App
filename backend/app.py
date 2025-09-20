@@ -90,7 +90,7 @@ def seed_users():
 
     users = [
         User(
-            id=14970017,   # Telegram ID
+            id=2,   # Telegram ID
             name="Alice",
             coins=50000000,
             ton=555,
@@ -105,7 +105,7 @@ def seed_users():
             banned=False
         ),
         User(
-            id=1497001715,   # Telegram ID
+            id=3,   # Telegram ID
             name="Alice",
             coins=50000000,
             ton=125,
@@ -132,20 +132,53 @@ def seed_users():
 
 # --- Enums defined from TypeScript interfaces ---
 
-
 class TransactionType(enum.Enum):
     WITHDRAWAL = 'Withdrawal'
     DEPOSIT = 'Deposit'
 
+
 class TransactionCurrency(enum.Enum):
     TON = 'TON'
     COINS = 'Coins'
-    SPINS='spins'
+    SPINS = 'Spins'  # fix capitalization for consistency
+
 
 class TransactionStatus(enum.Enum):
     COMPLETED = 'Completed'
     PENDING = 'Pending'
     FAILED = 'Failed'
+
+
+class Transaction(db.Model):
+    __tablename__ = 'transactions'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    amount = db.Column(db.Numeric(20, 9), nullable=False)
+    transaction_type = db.Column(db.Enum(TransactionType), nullable=False)
+    currency = db.Column(db.Enum(TransactionCurrency), nullable=False)
+    status = db.Column(db.Enum(TransactionStatus), nullable=False, default=TransactionStatus.COMPLETED)
+    description = db.Column(db.String(255))
+    transaction_id_on_blockchain = db.Column(db.String(255), nullable=True)  # NEW FIELD
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationship
+    user = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "amount": float(self.amount),  # convert Decimal -> float for JSON
+            "transaction_type": self.transaction_type.value,
+            "currency": self.currency.value,
+            "status": self.status.value,
+            "description": self.description,
+            "transaction_id_on_blockchain": self.transaction_id_on_blockchain,
+            "created_at": self.created_at.isoformat()
+        }
+
+
 
 class PromoCodeType(enum.Enum):
     COINS = 'COINS'
@@ -290,14 +323,15 @@ user_task_completion = db.Table('user_task_completions',
 )
 # Tracks friendships (many-to-many relationship on User)
 
+
 class UserCampaign(db.Model):
     __tablename__ = 'user_campaigns'
 
     # Common fields for User and Partner campaigns
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     creator_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    title = db.Column(db.String, nullable=False)  # Campaign title in any language
     link = db.Column(db.String, nullable=False)
-    langs = db.Column(JSON, nullable=False, default=list)
     
     status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
     completions = db.Column(db.Integer, default=0)
@@ -322,6 +356,7 @@ class UserCampaign(db.Model):
         return {
             'id': self.id,
             'creator_id': self.creator_id,
+            'title': self.title,  # Include the title field
             'link': self.link,
             'status': self.status.name if self.status else None,
             'completions': self.completions,
@@ -329,11 +364,9 @@ class UserCampaign(db.Model):
             'cost': str(self.cost),  # Convert Decimal to string for JSON
             'category': self.category.name if self.category else None,
             'check_subscription': self.check_subscription,  # Include the new field
-            'type': self.type,
-            'langs': self.langs  # The JSONB field is automatically read as a Python list
+            'type': self.type
+            # Removed 'langs' field
         }
-
-
 
 class PartnerCampaign(UserCampaign):
     __tablename__ = 'partner_campaigns'
@@ -464,21 +497,6 @@ class UserQuestProgress(db.Model):
 
 # models.py
 # models.py
-class Transaction(db.Model):
-    __tablename__ = 'transactions'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    amount = db.Column(db.Numeric(20, 9), nullable=False)
-    transaction_type = db.Column(db.Enum(TransactionType), nullable=False)
-    currency = db.Column(db.Enum(TransactionCurrency), nullable=False)
-    status = db.Column(db.Enum(TransactionStatus), nullable=False, default=TransactionStatus.COMPLETED)
-    description = db.Column(db.String(255))
-    transaction_id_on_blockchain  = db.Column(db.String(255), nullable=True)  # NEW FIELD
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationship
-    user = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
 
 class PromoCode(db.Model):
     __tablename__ = 'promo_codes'
@@ -949,6 +967,8 @@ def auth_with_telegram():
         traceback.print_exc()
         return jsonify({"error": "Authentication failed"}), 500
 
+
+
 @app.route('/my-campaigns', methods=['GET'])
 @jwt_required  # Use this or  depending on your needs
 def get_my_created_campaigns():
@@ -1050,8 +1070,6 @@ def get_all_uncompleted_campaigns():
 
 
 
-
-
 @app.route("/addusercampaigns", methods=["POST"])
 @jwt_required
 def create_campaign():
@@ -1075,7 +1093,7 @@ def create_campaign():
     user.ad_credit -= Decimal(str(data['cost']))
 
     # Required fields
-    required = ['user_id', 'link', 'goal', 'cost', 'languages', 'category']
+    required = ['user_id', 'link', 'title', 'goal', 'cost', 'category']
     if not all(k in data for k in required):
         return jsonify({
             "success": False,
@@ -1099,34 +1117,25 @@ def create_campaign():
             "message": "Invalid category value"
         }), 400
 
-    # Validate languages
-    langs = data.get('languages', [])
-    if not isinstance(langs, list):
-        return jsonify({
-            "success": False,
-            "message": "The 'languages' field must be an array of strings."
-        }), 400
-
-    # Create the right campaign type with check_subscription
     # Create the right campaign type
     if 'requiredLevel' in data:
         new_campaign = PartnerCampaign(
             creator_id=data['user_id'],
             link=data['link'],
-            langs=langs,
+            title=data['title'],
             status="ACTIVE",
             completions=0,
             goal=data['goal'],
             cost=Decimal(str(data['cost'])),
             category=category,
             required_level=data['requiredLevel'],
-            check_subscription=True
+            check_subscription=data.get('checkSubscription', False)
         )
     else:
         new_campaign = UserCampaign(
             creator_id=data['user_id'],
             link=data['link'],
-            langs=langs,
+            title=data['title'],
             status="ACTIVE",
             completions=0,
             goal=data['goal'],
@@ -1144,6 +1153,7 @@ def create_campaign():
         "newCampaign": new_campaign.to_dict(),  # This will include the webhook token
         "user": user.to_dict()
     }), 201
+
 
 
 def validate_telegram_access(link, check_subscription):
@@ -1740,6 +1750,40 @@ def delete_ad_network(network_id):
 def get_tasks():
     tasks = DailyTask.query.all()
     return jsonify([(task.to_dict()) for task in tasks]), 200
+
+
+
+
+# GET daily tasks that are NOT completed by a specific user (SQL approach)
+@app.route("/daily-tasks/incomplete", methods=["GET"])
+def get_incomplete_tasks():
+    user_id = request.args.get('user_id')
+    
+    if not user_id:
+        return jsonify({"error": "user_id parameter is required"}), 400
+    
+    # Use a subquery to find incomplete tasks
+    completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+        .filter(user_daily_task_completions.c.user_id == user_id)\
+        .filter(user_daily_task_completions.c.completed_at.isnot(None))\
+        .subquery()
+    
+    # Get tasks that are NOT in the completed subquery
+    incomplete_tasks = DailyTask.query\
+        .filter_by(status=CampaignStatus.ACTIVE)\
+        .filter(~DailyTask.id.in_(completed_subquery))\
+        .all()
+    
+    # Convert to dict with completion status
+    tasks_data = []
+    for task in incomplete_tasks:
+        task_dict = task.to_dict()
+        task_dict['completed'] = False
+        task_dict['claimed'] = False
+        tasks_data.append(task_dict)
+    
+    return jsonify(tasks_data), 200
+
 
 
 # Add these to your Flask app
@@ -2964,8 +3008,8 @@ def spin_wheel():
             
         elif selected_prize["type"] == "ton":
             # Assuming you have a TON balance field or using ad_credit for TON
-            if hasattr(user, 'ton_balance'):
-                user.ton_balance += Decimal(str(selected_prize["value"]))
+            if hasattr(user, 'ton'):
+                user.ton += Decimal(str(selected_prize["value"]))
             else:
                 user.ad_credit += Decimal(str(selected_prize["value"]))
                 
@@ -3107,124 +3151,6 @@ CONVERSION_RATE = 1000000  # 1 TON = 1,000,000 coins
 
 # Recipient wallet address from environment
 RECIPIENT_WALLET_ADDRESS = os.getenv('RECIPIENT_WALLET_ADDRESS')        
-
-# @app.route('/api/spin/buy', methods=['POST'])
-# @jwt_required
-# def buy_spins():
-#     """Purchase spins using coins, in-app TON, or blockchain TON"""
-#     try:
-#         data = request.get_json()
-#         user_id = data.get('userId')
-#         package_id = data.get('packageId')
-#         payment_method = data.get('paymentMethod')
-#         transaction_hash = data.get('transactionHash')  # For blockchain transactions
-        
-#         if not user_id or not package_id or not payment_method:
-#             return jsonify({"success": False, "message": "Missing parameters"}), 400
-        
-#         user = User.query.get(user_id)
-#         if not user:
-#             return jsonify({"success": False, "message": "User not found"}), 404
-        
-#         spin_package = next((pkg for pkg in SPIN_STORE_PACKAGES if pkg['id'] == package_id), None)
-#         if not spin_package:
-#             return jsonify({"success": False, "message": "Invalid package"}), 400
-        
-#         transactions = []  # List to store multiple transaction records
-#         message = ""
-#         spins_to_add = spin_package['spins']
-        
-#         if payment_method == 'COINS':
-#             cost_in_coins = spin_package['costTon'] * CONVERSION_RATE
-            
-#             if user.coins < cost_in_coins:
-#                 return jsonify({"success": False, "message": "Insufficient coins"}), 400
-            
-#             user.coins -= cost_in_coins
-            
-#             # Transaction for coins spent
-#             transactions.append(Transaction(
-#                 user_id=user.id,
-#                 amount=Decimal(-cost_in_coins),
-#                 transaction_type=TransactionType.WITHDRAWAL,
-#                 currency=TransactionCurrency.COINS,
-#                 status=TransactionStatus.COMPLETED,
-#                 description=f"Spent on {spin_package['spins']} spins"
-#             ))
-            
-#             message = f"Purchased {spins_to_add} spins for {cost_in_coins:,} coins"
-            
-#         elif payment_method == 'TON':
-#             cost_in_ton = Decimal(str(spin_package['costTon']))
-            
-#             if user.ad_credit< cost_in_ton:
-#                 return jsonify({"success": False, "message": "Insufficient TON balance"}), 400
-            
-#             user.ad_credit -= cost_in_ton
-            
-#             # Transaction for TON spent
-#             transactions.append(Transaction(
-#                 user_id=user.id,
-#                 amount=Decimal(-cost_in_ton),
-#                 transaction_type=TransactionType.WITHDRAWAL,
-#                 currency=TransactionCurrency.TON,
-#                 status=TransactionStatus.COMPLETED,
-#                 description=f"Spent on {spin_package['spins']} spins"
-#             ))
-            
-#             message = f"Purchased {spins_to_add} spins for {spin_package['costTon']} TON"
-            
-#         elif payment_method == 'TON_BLOCKCHAIN':
-#             # For blockchain transactions, add bonus
-#             bonus_spins = int(spin_package['spins'] * 0.1)
-#             spins_to_add += bonus_spins
-            
-#             # Transaction for blockchain payment (optional - you might track this separately)
-#             if transaction_hash:
-#                 transactions.append(Transaction(
-#                     user_id=user.id,
-#                     amount=Decimal(-spin_package['costTon']),
-#                     transaction_type=TransactionType.WITHDRAWAL,
-#                     currency=TransactionCurrency.TON,
-#                     status=TransactionStatus.COMPLETED,
-#                     description=f"Blockchain payment for spins - Hash: {transaction_hash}"
-#                 ))
-            
-#             message = f"Purchased {spin_package['spins']} spins + {bonus_spins} bonus via blockchain"
-            
-#         else:
-#             return jsonify({"success": False, "message": "Invalid payment method"}), 400
-        
-#         # Add spins to user
-#         user.spins += spins_to_add
-        
-#         # Transaction for spins received
-#         transactions.append(Transaction(
-#             user_id=user.id,
-#             amount=Decimal(spins_to_add),
-#             transaction_type=TransactionType.DEPOSIT,
-#             currency=TransactionCurrency.COINS,  # Spins are tracked as coins equivalent
-#             status=TransactionStatus.COMPLETED,
-#             description=f"Received {spins_to_add} spins purchase"
-#         ))
-        
-#         # Add all transactions to session
-#         for transaction in transactions:
-#             db.session.add(transaction)
-        
-#         db.session.commit()
-        
-#         return jsonify({
-#             "success": True,
-#             "message": message,
-#             "user": user.to_dict(),
-#             "transaction_ids": [t.id for t in transactions]
-#         })
-        
-#     except Exception as e:
-#         db.session.rollback()
-#         print(f"Spin purchase error: {e}")
-#         return jsonify({"success": False, "message": "Purchase failed"}), 500
 
 
 
@@ -3431,6 +3357,7 @@ def verify_ton_transaction_sync_logic(transaction_boc: str, expected_amount: Dec
 
 
 # app.py
+# app.py - Update the withdraw_ton endpoint
 @app.route('/api/withdraw/ton', methods=['POST'])
 @jwt_required
 def withdraw_ton():
@@ -3448,32 +3375,54 @@ def withdraw_ton():
     if amount is None or amount <= 0:
         return jsonify({"success": False, "message": "Invalid withdrawal amount"}), 400
 
-    # Use ad_credit instead of ton balance
-    user_ad_balance = user.ad_credit if user.ad_credit else Decimal('0')
-    if user_ad_balance < Decimal(str(amount)):
-        return jsonify({"success": False, "message": "Insufficient TON balance"}), 400
+    # Convert amount to Decimal
+    withdrawal_amount = Decimal(str(amount))
+    conversion_rate = Decimal(str(CONVERSION_RATE))
 
-    # Deduct from ad_credit balance
-    user.ad_credit -= Decimal(str(amount))
+    # Check total available balance (TON + converted coins)
+    ton_balance = user.ton if user.ton else Decimal('0')
+    coins_balance = user.coins if user.coins else Decimal('0')
+    coins_in_ton = coins_balance / conversion_rate
+    total_balance = ton_balance + coins_in_ton
+
+    if withdrawal_amount > total_balance:
+        return jsonify({"success": False, "message": "Insufficient total balance"}), 400
+
+    # Calculate how much to deduct from each balance
+    ton_to_deduct = min(withdrawal_amount, ton_balance)
+    remaining_amount = withdrawal_amount - ton_to_deduct
+    
+    coins_to_convert = remaining_amount * conversion_rate
+
+    # Update balances
+    user.ton = ton_balance - ton_to_deduct
+    user.coins = coins_balance - coins_to_convert
 
     # Create withdrawal transaction record
+    transaction_description = f"Withdrawal of {amount} TON"
+    if coins_to_convert > 0:
+        transaction_description += f" (Converted {coins_to_convert:.0f} coins)"
+
     transaction = Transaction(
         user_id=user.id,
         amount=Decimal(-amount),
         transaction_type=TransactionType.WITHDRAWAL,
         currency=TransactionCurrency.TON,
-        status=TransactionStatus.PENDING,  # Set as pending until blockchain confirmation
-        description=f"Withdrawal request for {amount} TON"
+        status=TransactionStatus.PENDING,
+        description=transaction_description
     )
     db.session.add(transaction)
     db.session.commit()
 
     return jsonify({
         "success": True,
-        "message": f"Withdrawal request processed for {amount} TON",
+        "message": f"Withdrawal processed for {amount} TON",
         "user": user.to_dict(),
         "transactionId": transaction.id
     })
+
+
+
 
 @app.route('/api/withdraw/update-transaction', methods=['POST'])
 @jwt_required
@@ -3493,3 +3442,85 @@ def update_withdrawal_transaction():
     db.session.commit()
 
     return jsonify({"success": True})
+
+
+
+
+# app.py - Add these endpoints
+# app.py
+@app.route('/api/transactions/withdrawals', methods=['GET'])
+@jwt_required
+def get_withdrawal_transactions():
+    try:
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        limit = request.args.get('limit', 10, type=int)
+        status = request.args.get('status')
+        currency = request.args.get('currency')
+        start_date = request.args.get('startDate')
+        end_date = request.args.get('endDate')
+        
+        # Build query
+        query = Transaction.query.filter(
+            Transaction.transaction_type == TransactionType.WITHDRAWAL
+        )
+        
+        # Apply filters
+        if status:
+            query = query.filter(Transaction.status == status)
+        if currency:
+            query = query.filter(Transaction.currency == currency)
+        if start_date:
+            start_date_obj = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(Transaction.created_at >= start_date_obj)
+        if end_date:
+            end_date_obj = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query = query.filter(Transaction.created_at <= end_date_obj)
+        
+        # Get total count
+        total = query.count()
+        
+        # Apply pagination
+        transactions = query.order_by(Transaction.created_at.desc()).paginate(
+            page=page, 
+            per_page=limit, 
+            error_out=False
+        ).items
+        
+        # Convert to list of dictionaries
+        transactions_data = []
+        for tx in transactions:
+            tx_data = {
+                'id': tx.id,
+                'user_id': tx.user_id,
+                'amount': float(tx.amount),
+                'transaction_type': tx.transaction_type.value,
+                'currency': tx.currency.value,
+                'status': tx.status.value,
+                'description': tx.description,
+                'transaction_id_on_blockchain': tx.transaction_id_on_blockchain,
+                'created_at': tx.created_at.isoformat() if tx.created_at else None,
+                'date': tx.created_at.strftime('%Y-%m-%d %H:%M') if tx.created_at else 'Unknown date'
+            }
+            transactions_data.append(tx_data)
+        
+        return jsonify({
+            'success': True,
+            'transactions': transactions_data,
+            'total': total,
+            'page': page,
+            'limit': limit,
+            'totalPages': (total + limit - 1) // limit
+        })
+        
+    except Exception as e:
+        print(f"Error fetching withdrawal transactions: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to fetch transactions',
+            'transactions': [],
+            'total': 0,
+            'page': 1,
+            'limit': 10,
+            'totalPages': 0
+        }), 500

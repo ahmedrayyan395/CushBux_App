@@ -24,6 +24,8 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
           <div className="bg-slate-800 p-2 rounded-lg flex items-center space-x-2">
             {ICONS.coin}
             <span className="font-bold text-lg">{user?.coins!= null ? formatNumber(user.coins) : '0'}</span>
+            {ICONS.ton}
+            <span className="font-bold text-lg">{user?.ton!= null ? formatNumber(user.ton) : '0'}</span>
           </div>
         </div>
         <div className="flex items-center space-x-2">

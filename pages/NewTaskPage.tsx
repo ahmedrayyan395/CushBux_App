@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { COMPLETION_TIERS, LANGUAGE_OPTIONS } from '../constants';
-import type { CompletionTier, LanguageOption, UserCampaign, User } from '../types';
+import { COMPLETION_TIERS } from '../constants';
+import type { CompletionTier, UserCampaign, User } from '../types';
 import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
@@ -38,7 +38,10 @@ const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
         campaigns.map(campaign => (
           <div key={campaign.id} className="bg-slate-800 p-4 rounded-lg space-y-3">
             <div className="flex justify-between items-start">
-              <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
+              <div>
+                <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
+                {campaign.title && <p className="text-slate-400 text-sm mt-1">{campaign.title}</p>}
+              </div>
               <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>{campaign.status}</span>
             </div>
             <div>
@@ -126,29 +129,15 @@ const ValidationInstructions: React.FC<{
 const AddTaskFormComponent: React.FC<{
     taskLink: string;
     setTaskLink: (value: string) => void;
+    campaignTitle: string;
+    setCampaignTitle: (value: string) => void;
     checkSubscription: boolean;
     setCheckSubscription: (value: boolean) => void;
     selectedTier: CompletionTier | null;
     setSelectedTier: (tier: CompletionTier) => void;
-    selectedLanguages: string[];
-    setSelectedLanguages: (langs: string[]) => void;
     selectedCategory: string;
     setSelectedCategory: (category: string) => void;
-}> = ({ taskLink, setTaskLink, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedLanguages, setSelectedLanguages, selectedCategory, setSelectedCategory }) => {
-
-    const handleLanguageToggle = (langId: string) => {
-        const newSelection = [...selectedLanguages];
-        const index = newSelection.indexOf(langId);
-        if (index > -1) {
-            if (newSelection.length > 1 && langId !== 'en') {
-                newSelection.splice(index, 1);
-            }
-        } else {
-            newSelection.push(langId);
-        }
-        setSelectedLanguages(newSelection);
-    };
-
+}> = ({ taskLink, setTaskLink, campaignTitle, setCampaignTitle, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedCategory, setSelectedCategory }) => {
     return (
         <div className="space-y-6">
             {/* Category Selection */}
@@ -168,6 +157,21 @@ const AddTaskFormComponent: React.FC<{
                         Game
                     </button>
                 </div>
+            </section>
+
+            {/* Campaign Title input */}
+            <section className="space-y-2">
+                <label htmlFor="campaign-title" className="text-base font-semibold text-slate-300">
+                    Campaign Title (in any language)
+                </label>
+                <input
+                    id="campaign-title"
+                    type="text"
+                    value={campaignTitle}
+                    onChange={(e) => setCampaignTitle(e.target.value)}
+                    placeholder="Enter a title for your campaign"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                />
             </section>
 
             {/* Link input */}
@@ -214,21 +218,6 @@ const AddTaskFormComponent: React.FC<{
                 ))}
               </div>
             </section>
-            
-            {/* Language Selection */}
-            <section className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-300">Languages <span className="text-xs text-slate-400">(+15% for each extra)</span></h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {LANGUAGE_OPTIONS.map(lang => (
-                        <button key={lang.id} onClick={() => handleLanguageToggle(lang.id)}
-                         className={`p-2 rounded-lg border-2 font-semibold text-base transition-all
-                         ${selectedLanguages.includes(lang.id) ? 'bg-green-500 border-green-500' : 'bg-slate-800 border-slate-700 hover:border-green-500'}`}
-                         disabled={lang.id === 'en' && selectedLanguages.includes('en') && selectedLanguages.length === 1}>
-                            {lang.name}
-                        </button>
-                    ))}
-                </div>
-            </section>
 
             {/* Validation Instructions */}
             <ValidationInstructions category={selectedCategory} checkSubscription={checkSubscription} />
@@ -249,9 +238,9 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   
   // Form state
   const [taskLink, setTaskLink] = useState('');
+  const [campaignTitle, setCampaignTitle] = useState('');
   const [checkSubscription, setCheckSubscription] = useState(false);
   const [selectedTier, setSelectedTier] = useState<CompletionTier | null>(COMPLETION_TIERS[0]);
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']);
   const [selectedCategory, setSelectedCategory] = useState<string>('Social');
   const [totalCost, setTotalCost] = useState(0);
 
@@ -263,15 +252,12 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
     if (selectedTier) {
       const baseCost = selectedTier.cost;
       const subscriptionCost = (selectedCategory === 'Social' && checkSubscription) ? baseCost * 0.30 : 0;
-      const extraLanguages = selectedLanguages.includes('en') ? selectedLanguages.length - 1 : selectedLanguages.length;
-      const languageCost = baseCost * extraLanguages * 0.15;
-      
-      const finalCost = baseCost + subscriptionCost + languageCost;
+      const finalCost = baseCost + subscriptionCost;
       setTotalCost(finalCost);
     } else {
         setTotalCost(0);
     }
-  }, [selectedTier, checkSubscription, selectedLanguages, selectedCategory]);
+  }, [selectedTier, checkSubscription, selectedCategory]);
   
 const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
 
@@ -330,7 +316,7 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
 };
 
   const adBalance = user?.ad_credit || 0;
-  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
+  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && campaignTitle.trim().length > 0;
   const canAfford = adBalance >= totalCost;
   
   const handleCreateCampaign = async () => {
@@ -341,10 +327,10 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
         const result = await addUserCampaignAPI({
         userid: user.id,
         link: taskLink,
+        title: campaignTitle.trim(),
         goal: selectedTier.completions,
         cost: totalCost,
         category: selectedCategory,
-        languages: selectedLanguages,
         checkSubscription: selectedCategory === 'Social' ? checkSubscription : false,
       });
 
@@ -354,9 +340,9 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
               setUser(result.user);
               // Reset form
               setTaskLink('');
+              setCampaignTitle('');
               setCheckSubscription(false);
               setSelectedTier(COMPLETION_TIERS[0]);
-              setSelectedLanguages(['en']);
               setSelectedCategory('Social');
               // Switch tab and trigger refresh
               setActiveTab('my');
@@ -415,12 +401,12 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
               <AddTaskFormComponent 
                   taskLink={taskLink}
                   setTaskLink={setTaskLink}
+                  campaignTitle={campaignTitle}
+                  setCampaignTitle={setCampaignTitle}
                   checkSubscription={checkSubscription}
                   setCheckSubscription={setCheckSubscription}
                   selectedTier={selectedTier}
                   setSelectedTier={setSelectedTier}
-                  selectedLanguages={selectedLanguages}
-                  setSelectedLanguages={setSelectedLanguages}
                   selectedCategory={selectedCategory}
                   setSelectedCategory={setSelectedCategory}
               />

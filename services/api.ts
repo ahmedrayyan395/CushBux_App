@@ -1,6 +1,7 @@
 import type { User, DailyTask, GameTask, Quest, Transaction, Friend, UserCampaign, PartnerCampaign, PromoCode, AdNetwork, AdminUser, Task } from '../types';
 import { INITIAL_USER, DAILY_TASKS, GAME_TASKS, QUESTS, TRANSACTIONS, CONVERSION_RATE, MOCK_FRIENDS, MOCK_USER_CAMPAIGNS, MOCK_PROMO_CODES, SPIN_WHEEL_PRIZES, SPIN_STORE_PACKAGES, MOCK_ADMINS, generateMockUsers, ICONS } from '../constants';
 import { get } from 'http';
+import type {  TransactionsFilters, TransactionsResponse } from '../types';
 
 // In-memory store
 let users: User[] = [ { ...INITIAL_USER }, ...generateMockUsers(50) ];
@@ -34,8 +35,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
 
 // const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
 
@@ -466,15 +467,16 @@ export const validateSubscription = async (
   });
 };
 
+
 export const addUserCampaignAPI = async (
   campaignData: {
     userid: number;
     link: string;
+    title: string;
     goal: number;
     cost: number;
     level?: number;
     category: string;
-    languages: Array<string>;
     checkSubscription?: boolean;
   }
 ): Promise<{
@@ -484,11 +486,11 @@ export const addUserCampaignAPI = async (
   user?: User;
 }> => {
   const payload: any = {
-    user_id: campaignData.userid, // ✅ changed from userid to user_id
+    user_id: campaignData.userid,
     link: campaignData.link,
+    title: campaignData.title,
     goal: campaignData.goal,
     cost: campaignData.cost,
-    languages: campaignData.languages,
     category: campaignData.category,
     checkSubscription: campaignData.checkSubscription || false,
   };
@@ -502,7 +504,6 @@ export const addUserCampaignAPI = async (
     body: JSON.stringify(payload),
   });
 };
-
 
 
 
@@ -633,6 +634,19 @@ export const fetchDailyTasksAPI = async () => {
 };
 
 
+// services/api.ts
+export const fetchIncompleteDailyTasks = async (userId: string): Promise<DailyTask[]> => {
+  try {
+    const response = await apiFetch<DailyTask[]>(`/daily-tasks/incomplete?user_id=${userId}`, { 
+      method: 'GET' 
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching incomplete daily tasks:', error);
+    return [];
+  }
+};
 
 
 // services/api.ts
@@ -1347,9 +1361,42 @@ export const updateWithdrawalTransaction = async (
 
 
 
+// Add these to your existing api.ts file
 
 
+// services/api.ts
 
+export const fetchWithdrawalTransactions = async (
+  filters: TransactionsFilters = {}
+): Promise<TransactionsResponse> => {
+  try {
+    const params = new URLSearchParams();
+    
+    if (filters.page) params.append('page', filters.page.toString());
+    if (filters.limit) params.append('limit', filters.limit.toString());
+    if (filters.status) params.append('status', filters.status);
+    if (filters.currency) params.append('currency', filters.currency);
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+
+    const url = `/api/transactions/withdrawals?${params.toString()}`;
+
+    const response = await apiFetch<TransactionsResponse>(url, {
+      method: 'GET',
+    });
+
+    return response;
+  } catch (error) {
+    console.error('Error fetching withdrawal transactions:', error);
+    return {
+      transactions: [],
+      total: 0,
+      page: 1,
+      limit: 10,
+      totalPages: 0
+    };
+  }
+};
 
 
 

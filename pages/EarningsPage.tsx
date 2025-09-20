@@ -10,15 +10,12 @@ import {
   startDailyTask,
   getUserDailyTaskStatus,
   redeemPromoCode,
+  fetchIncompleteDailyTasks,
 } from '../services/api';
 import { ICONS, CONVERSION_RATE, TASK_TYPES } from '../constants';
 
-// Declare the ad SDK function
-declare global {
-  interface Window {
-    show_9692552?: (type?: 'pop') => Promise<void>;
-  }
-}
+// Declare the ad SDK function the same way as in SpinWheel page
+declare const show_9692552: (type?: 'pop') => Promise<void>;
 
 const TasksLockedOverlay = () => (
   <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-center p-4 rounded-lg">
@@ -98,10 +95,66 @@ const DailyTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id, task.type); // Pass task type here
-      if (task.type !== TASK_TYPES.AD) {
-        // window.open(task.link, '_blank'); // open in new tab for non-ad tasks
+      onStart(task.id, task.taskType); // Pass task type here
+      // Open the link in a new tab for non-ad tasks immediately after starting
+      if (task.taskType !== TASK_TYPES.AD && task.link) {
+        window.open(task.link, '_blank');
       }
+    }
+  };
+
+  const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
+
+  // Determine if this is a clickable task (has a link and is not an ad)
+  const isClickable = task.link && task.taskType !== TASK_TYPES.AD;
+  const href = isClickable ? task.link : '#';
+  const target = isClickable ? '_blank' : '_self';
+
+  return (
+    <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-between">
+      <div className="flex items-center space-x-4 flex-grow min-w-0">
+        <div className={`bg-slate-700 p-3 rounded-full flex-shrink-0 ${buttonClass.split(' ')[0]}`}>
+          {icon}
+        </div>
+        <div className="flex-grow min-w-0">
+          <h3 className="font-semibold text-white truncate" title={task.title}>{task.title}</h3>
+          <p className="text-sm text-slate-400">{description}</p>
+          <p className="text-sm text-green-400 mt-1">+{(reward).toLocaleString()} Coins</p>
+        </div>
+      </div>
+      <a
+        href={href}
+        target={target}
+        rel="noopener noreferrer"
+        onClick={handleClick}
+        className={`${buttonClass} text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors flex-shrink-0 ml-2 ${
+          buttonState.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
+        }`}
+      >
+        {buttonState.text}
+      </a>
+    </div>
+  );
+};
+
+// ---------------- Campaign Task Item ----------------
+const CampaignTaskItem: React.FC<{ 
+  task: UserCampaign; 
+  icon: React.ReactNode;
+  description: string;
+  buttonClass: string;
+  onStart: (taskId: number, taskType?: string) => void;
+  onClaim: (taskId: number) => void;
+  buttonState: { text: string; disabled: boolean; variant: string };
+}> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (buttonState.variant === 'claim') {
+      onClaim(task.id);
+    } else if (buttonState.variant === 'start') {
+      onStart(task.id);
     }
   };
 
@@ -120,9 +173,7 @@ const DailyTaskItem: React.FC<{
         </div>
       </div>
       <a
-        href={task.type === TASK_TYPES.AD ? '#' : task.link}
-        target={task.type === TASK_TYPES.AD ? '_self' : '_blank'}
-        rel="noopener noreferrer"
+        href="#"
         onClick={handleClick}
         className={`${buttonClass} text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors flex-shrink-0 ml-2 ${
           buttonState.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
@@ -153,7 +204,7 @@ const TaskSection: React.FC<{
         {tasks.length > 0 ? (
           tasks.map((task) => {
             const buttonState = getTaskButtonState(task.id);
-            const Component = TaskComponent || DailyTaskItem;
+            const Component = TaskComponent || CampaignTaskItem;
             return (
               <Component
                 key={task.id}
@@ -186,6 +237,13 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   const [loadingTasks, setLoadingTasks] = useState<Set<number>>(new Set());
   const [loadingDailyTasks, setLoadingDailyTasks] = useState<Set<number>>(new Set());
 
+
+
+
+   
+
+
+
   useEffect(() => {
     loadAllData();
   }, []);
@@ -195,7 +253,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
       const campaignsData = await fetchAllCampaignsAPI(user.id);
       setCampaigns(campaignsData);
 
-      const dailyTasksData = await fetchDailyTasksAPI();
+      const dailyTasksData = await fetchIncompleteDailyTasks(user.id);
       setDailyTasks(dailyTasksData);
 
       const statusResponse = await getUserTaskStatus(user.id);
@@ -212,67 +270,72 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     }
   };
 
-  // ---- Ad handling function ----
+  // ---- Ad handling function - use the same approach as SpinWheel page ----
   const showAdIfAvailable = async (): Promise<boolean> => {
-    if (typeof window.show_9692552 === 'function') {
-      try {
-        await window.show_9692552();
+    try {
+      // Use the same function declaration as in SpinWheel page
+      await show_9692552();
+      
+      return true;
+    } catch (e) {
+      console.error("Ad failed to show", e);
+      // In development, simulate ad success
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Simulating ad in development");
         return true;
-      } catch (e) {
-        console.error("Ad failed during auto-spin", e);
-        return false;
       }
+      return false;
     }
-    return false;
   };
 
   // ---- Daily Task Logic ----
   const handleDailyTaskStart = async (taskId: number, taskType?: string) => {
-  setLoadingDailyTasks(prev => new Set(prev).add(taskId));
+    setLoadingDailyTasks(prev => new Set(prev).add(taskId));
 
-  try {
-    // Find the daily task to get its type
-    const task = dailyTasks.find(t => t.id === taskId);
-    const actualTaskType = taskType || task?.taskType;
-    
-    // Show ad for ad-type tasks before starting
-if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
-        const adShown = await showAdIfAvailable();
-      if (!adShown) {
-        alert("Ad failed to load. Please try again.");
-        return;
-      }
-    }
-
-    const result = await startDailyTask(user.id, taskId);
-
-    if (result.success) {
-      setDailyTaskStatuses(prev => ({
-        ...prev,
-        [taskId]: { started: true, completed: false, claimed: false }
-      }));
+    try {
+      // Find the daily task to get its type
+      const task = dailyTasks.find(t => t.id === taskId);
+      const actualTaskType = taskType || task?.type;
       
-      // For ad tasks, automatically mark as completed after ad is shown
-      if (actualTaskType === TASK_TYPES.AD) {
-        // Small delay to allow state update before claiming
-        setTimeout(() => {
-          handleDailyTaskClaim(taskId);
-        }, 500);
+      // Show ad for ad-type tasks before starting
+      if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
+        const adShown = await showAdIfAvailable();
+        if (!adShown) {
+          alert("Ad failed to load. Please try again.");
+          return;
+        }
       }
-    } else {
-      alert(result.message);
+
+      const result = await startDailyTask(user.id, taskId);
+
+      if (result.success) {
+        setDailyTaskStatuses(prev => ({
+          ...prev,
+          [taskId]: { started: true, completed: false, claimed: false }
+        }));
+        
+        // For ad tasks, automatically mark as completed after ad is shown
+        if (actualTaskType === TASK_TYPES.AD) {
+          // Small delay to allow state update before claiming
+          setTimeout(() => {
+            handleDailyTaskClaim(taskId);
+          }, 500);
+        }
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error("Error starting daily task:", error);
+      alert("Failed to start task");
+    } finally {
+      setLoadingDailyTasks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(taskId);
+        return newSet;
+      });
     }
-  } catch (error) {
-    console.error("Error starting daily task:", error);
-    alert("Failed to start task");
-  } finally {
-    setLoadingDailyTasks(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(taskId);
-      return newSet;
-    });
-  }
-};
+  };
+
   const handleDailyTaskClaim = async (taskId: number) => {
     setLoadingDailyTasks(prev => new Set(prev).add(taskId));
 
@@ -319,14 +382,13 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
   const handleTaskStart = async (taskId: number, taskType?: string) => {
     setLoadingTasks(prev => new Set(prev).add(taskId));
     try {
-      // Show ad for ad-type tasks before starting
-      if (taskType === TASK_TYPES.AD) {
-        const adShown = await showAdIfAvailable();
-        if (!adShown) {
-          alert("Ad failed to load. Please try again.");
-          return;
-        }
-      }
+      // // Show ad for ad-type tasks before starting
+      // if (taskType === TASK_TYPES.AD) {
+      //   if (!adShown) {
+      //     alert("Ad failed to load. Please try again.");
+      //     return;
+      //   }
+      // }
 
       const result = await startTask(user.id, taskId);
       if (result.success) {
@@ -336,7 +398,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
         }));
         
         const task = campaigns.find(t => t.id === taskId);
-        if (task && task.type !== TASK_TYPES.AD) {
+        if (task && task.taskType !== TASK_TYPES.AD) {
           window.open(task.link, '_blank');
         }
         
@@ -352,7 +414,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
       }
     } catch (error) {
       console.error("Error starting task:", error);
-      alert(error.data['message']);
+      alert(error.data?.['message'] || "Failed to start task");
     } finally {
       setLoadingTasks(prev => {
         const newSet = new Set(prev);
@@ -383,7 +445,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
       }
     } catch (error) {
       console.error("Error claiming task:", error);
-      alert(error.data['message']);
+      alert(error.data?.['message'] || "Failed to claim task");
     } finally {
       setLoadingTasks(prev => {
         const newSet = new Set(prev);
@@ -434,6 +496,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
+            TaskComponent={CampaignTaskItem}
           />
 
           <TaskSection 
@@ -445,6 +508,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
+            TaskComponent={CampaignTaskItem}
           />
 
           <TaskSection 
@@ -456,6 +520,7 @@ if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
+            TaskComponent={CampaignTaskItem}
           />
         </div>
       </div>

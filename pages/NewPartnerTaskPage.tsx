@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { COMPLETION_TIERS, LANGUAGE_OPTIONS } from '../constants';
-import type { CompletionTier, LanguageOption, PartnerCampaign, User } from '../types';
+import { COMPLETION_TIERS } from '../constants';
+import type { CompletionTier, PartnerCampaign, User } from '../types';
 import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampaignAPI, fetchUserCampaignsAPI } from '../services/api';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import ProgressBar from '../components/ProgressBar';
@@ -40,7 +40,10 @@ const MyPartnerTasksComponent:  React.FC<MyTasksComponentProps> = ({ userid }) =
         campaigns.map(campaign => (
           <div key={campaign.id} className="bg-slate-800 p-4 rounded-lg space-y-3">
             <div className="flex justify-between items-start">
-              <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
+              <div>
+                <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
+                {campaign.title && <p className="text-slate-400 text-sm mt-1">{campaign.title}</p>}
+              </div>
               <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>{campaign.status}</span>
             </div>
             <div className="text-sm text-slate-300">Required Level: <span className="font-bold text-white">{campaign.requiredLevel}</span></div>
@@ -127,29 +130,30 @@ const PartnerInstructions: React.FC = () => (
 const AddPartnerTaskFormComponent: React.FC<{
     taskLink: string;
     setTaskLink: (value: string) => void;
+    campaignTitle: string;
+    setCampaignTitle: (value: string) => void;
     selectedLevel: number;
     setSelectedLevel: (level: number) => void;
     selectedTier: CompletionTier | null;
     setSelectedTier: (tier: CompletionTier) => void;
-    selectedLanguages: string[];
-    setSelectedLanguages: (langs: string[]) => void;
-}> = ({ taskLink, setTaskLink, selectedLevel, setSelectedLevel, selectedTier, setSelectedTier, selectedLanguages, setSelectedLanguages }) => {
-
-    const handleLanguageToggle = (langId: string) => {
-        const newSelection = [...selectedLanguages];
-        const index = newSelection.indexOf(langId);
-        if (index > -1) {
-            if (newSelection.length > 1 && langId !== 'en') {
-                newSelection.splice(index, 1);
-            }
-        } else {
-            newSelection.push(langId);
-        }
-        setSelectedLanguages(newSelection);
-    };
-
+}> = ({ taskLink, setTaskLink, campaignTitle, setCampaignTitle, selectedLevel, setSelectedLevel, selectedTier, setSelectedTier }) => {
     return (
         <div className="space-y-6">
+            {/* Campaign Title input */}
+            <section className="space-y-2">
+                <label htmlFor="campaign-title" className="text-base font-semibold text-slate-300">
+                    Campaign Title (in any language)
+                </label>
+                <input
+                    id="campaign-title"
+                    type="text"
+                    value={campaignTitle}
+                    onChange={(e) => setCampaignTitle(e.target.value)}
+                    placeholder="Enter a title for your campaign"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                />
+            </section>
+
             {/* Link input */}
             <section className="space-y-2">
                 <label htmlFor="task-link" className="text-base font-semibold text-slate-300">Link to your game/bot</label>
@@ -186,18 +190,6 @@ const AddPartnerTaskFormComponent: React.FC<{
                 ))}
               </div>
             </section>
-            
-            {/* Language Selection */}
-            <section className="space-y-3">
-                <h3 className="text-base font-semibold text-slate-300">Languages <span className="text-xs text-slate-400">(+15% for each extra)</span></h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {LANGUAGE_OPTIONS.map(lang => (
-                        <button key={lang.id} onClick={() => handleLanguageToggle(lang.id)} className={`p-2 rounded-lg border-2 font-semibold text-base transition-all ${selectedLanguages.includes(lang.id) ? 'bg-blue-500 border-blue-500' : 'bg-slate-800 border-slate-700 hover:border-blue-500'}`} disabled={lang.id === 'en' && selectedLanguages.includes('en') && selectedLanguages.length === 1}>
-                            {lang.name}
-                        </button>
-                    ))}
-                </div>
-            </section>
 
             {/* Webhook Instructions */}
             <PartnerInstructions />
@@ -218,9 +210,9 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
   
   // Form state
   const [taskLink, setTaskLink] = useState('');
+  const [campaignTitle, setCampaignTitle] = useState('');
   const [selectedLevel, setSelectedLevel] = useState(1);
   const [selectedTier, setSelectedTier] = useState<CompletionTier | null>(COMPLETION_TIERS[0]);
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']);
   const [totalCost, setTotalCost] = useState(0);
 
   // Control State
@@ -233,16 +225,12 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
         const baseCost = selectedTier.cost;
         const partnerBaseCost = baseCost * PARTNER_MULTIPLIER;
         const levelAdjustedCost = partnerBaseCost * selectedLevel;
-
-        const extraLanguages = selectedLanguages.includes('en') ? selectedLanguages.length - 1 : selectedLanguages.length;
-        const languageCost = levelAdjustedCost * extraLanguages * 0.15;
-        
-        const finalCost = levelAdjustedCost + languageCost;
+        const finalCost = levelAdjustedCost;
         setTotalCost(finalCost);
     } else {
         setTotalCost(0);
     }
-  }, [selectedTier, selectedLevel, selectedLanguages]);
+  }, [selectedTier, selectedLevel]);
 
  const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
  
@@ -301,7 +289,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
  };
 
   const adBalance = user?.ad_credit || 0;
-  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
+  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && campaignTitle.trim().length > 0;
   const canAfford = adBalance >= totalCost;
   let category='Partner';
   
@@ -313,11 +301,11 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
           const result = await addUserCampaignAPI({
              userid: user.id,
              link: taskLink,
+             title: campaignTitle.trim(),
              goal: selectedTier.completions,
              cost: totalCost,
              level: selectedLevel,
              category: category,
-             languages: selectedLanguages,
           });
 
           if (result.success && result.user) {
@@ -325,9 +313,9 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
               setUser(result.user);
               // Reset form
               setTaskLink('');
+              setCampaignTitle('');
               setSelectedLevel(1);
               setSelectedTier(COMPLETION_TIERS[0]);
-              setSelectedLanguages(['en']);
               // Switch tab and trigger refresh
               setActiveTab('my');
               setCampaignsVersion(v => v + 1);
@@ -382,12 +370,12 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
               <AddPartnerTaskFormComponent 
                   taskLink={taskLink}
                   setTaskLink={setTaskLink}
+                  campaignTitle={campaignTitle}
+                  setCampaignTitle={setCampaignTitle}
                   selectedLevel={selectedLevel}
                   setSelectedLevel={setSelectedLevel}
                   selectedTier={selectedTier}
                   setSelectedTier={setSelectedTier}
-                  selectedLanguages={selectedLanguages}
-                  setSelectedLanguages={setSelectedLanguages}
               />
             </>
         ) : (
