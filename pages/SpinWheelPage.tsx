@@ -71,11 +71,19 @@ const SpinWheelPage: React.FC<{
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
 
-  useEffect(() => {
-    currentSpins.current = user?.spins ?? 0;
-  }, [user?.spins]);
 
-  const handleSpin = async (): Promise<boolean> => {
+
+  
+
+
+
+
+
+  useEffect(() => {
+  currentSpins.current = user?.spins ?? 0;
+}, [user?.spins, user?.coins, user?.ad_credit]); // Add dependencies for all user properties that can change
+
+const handleSpin = async (): Promise<boolean> => {
   // Use currentSpins.current instead of user?.spins for immediate accuracy
   if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
@@ -88,7 +96,6 @@ const SpinWheelPage: React.FC<{
       setIsSpinning(false);
       return false;
     }
-
 
     // Calculate rotation based on the actual prize
     const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
@@ -105,20 +112,48 @@ const SpinWheelPage: React.FC<{
     // Update rotation to the calculated final position
     setRotation(finalRotation);
 
-    // Update user state
-    if (result.user) {
-      setUser(result.user);
-      currentSpins.current = result.user.spins; // Update the ref immediately
-      setRecentPrize(result.prize || null);
+    // Store the result for later use
+    const spinResult = result;
+
+    // Wait for animation to complete FIRST
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    
+    // ✅ NOW update user state AFTER animation completes
+    if (spinResult.prize) {
+      const updatedUser = { ...user };
+      
+      // Handle different prize types
+      switch (spinResult.prize.type) {
+        case 'spins':
+          updatedUser.spins = (user.spins || 0) + spinResult.prize.value;
+          currentSpins.current = updatedUser.spins;
+          break;
+        case 'coins':
+          updatedUser.coins = (user.coins || 0) + spinResult.prize.value;
+          break;
+        case 'ton':
+          updatedUser.ad_credit = (user.ad_credit ? 
+            (Number(user.ad_credit) + spinResult.prize.value).toString() : 
+            spinResult.prize.value.toString()
+          );
+          break;
+      }
+      
+      // Update user state after animation
+      setUser(updatedUser);
+      setRecentPrize(spinResult.prize);
     }
 
-    // Wait for animation to complete
-    await new Promise(resolve => setTimeout(resolve, 4000));
+    // ✅ Final update with server data to ensure consistency
+    if (spinResult.user) {
+      setUser(spinResult.user);
+      currentSpins.current = spinResult.user.spins;
+    }
     
     setIsSpinning(false);
     
-    if (result.prize?.value > 0) {
-      setShowPrizeNotification(result.prize);
+    if (spinResult.prize?.value > 0) {
+      setShowPrizeNotification(spinResult.prize);
     }
     
     return true;
@@ -129,35 +164,54 @@ const SpinWheelPage: React.FC<{
     return false;
   }
 };
+
+
+
+
+
+
+
+
   // ... (The rest of the component, including runAutoSpin, toggleAutoSpin, etc., remains the same)
   const runAutoSpin = async () => {
-    if (!user) return;
+  if (!user) return;
+  
+  autoSpinActive.current = true;
+  setIsAutoSpinning(true);
+
+  let spinsInSession = 0;
+  let currentUser = user; // Keep local reference to current user state
+
+  while (autoSpinActive.current && currentSpins.current > 0) {
+    spinsInSession++;
     
-    autoSpinActive.current = true;
-    setIsAutoSpinning(true);
-
-    let spinsInSession = 0;
-    while (autoSpinActive.current && currentSpins.current > 0) {
-      spinsInSession++;
-      const success = await handleSpin();
-      
-      // Wait for spin animation to mostly finish before the next one
-      await new Promise(resolve => setTimeout(resolve, success ? 4250 : 250));
-
-      if (autoSpinActive.current && currentSpins.current > 0 && spinsInSession > 0 && spinsInSession % 5 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        try {
-          await show_9692552();
-        } catch (e) {
-          console.error("Ad failed during auto-spin", e);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+    // Store current user state before spin
+    const userBeforeSpin = currentUser;
+    
+    const success = await handleSpin();
+    
+    // Update local user reference if handleSpin updated it
+    if (success && currentUser !== user) {
+      currentUser = user;
     }
+    
+    // Wait for spin animation to mostly finish before the next one
+    await new Promise(resolve => setTimeout(resolve, success ? 4250 : 250));
 
-    autoSpinActive.current = false;
-    setIsAutoSpinning(false);
-  };
+    if (autoSpinActive.current && currentSpins.current > 0 && spinsInSession > 0 && spinsInSession % 5 === 0) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        await show_9692552();
+      } catch (e) {
+        console.error("Ad failed during auto-spin", e);
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  autoSpinActive.current = false;
+  setIsAutoSpinning(false);
+};
 
   const toggleAutoSpin = () => {
     if (isAutoSpinning) {
@@ -208,28 +262,25 @@ const SpinWheelPage: React.FC<{
       <SpinHistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} userId={user?.id} />
       <PrizeNotification prize={showPrizeNotification} onClose={() => setShowPrizeNotification(null)} />
       
-      <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md z-40 p-5 border-b border-slate-700/30 flex items-center justify-between">
-        <button onClick={() => navigate(-1)} className="flex items-center font-semibold text-white/90 hover:text-white transition-colors w-28">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-          <span className="ml-2">Back</span>
-        </button>
-        
-        <div className="flex flex-col items-center">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">SPIN WHEEL</h1>
-          {/* {recentPrize && (
-            <div className={`text-xs font-semibold mt-1 px-2 py-1 rounded-full ${ recentPrize.type === 'none' ? 'bg-red-500/20 text-red-300' : recentPrize.type === 'coins' ? 'bg-yellow-500/20 text-yellow-300' : recentPrize.type === 'spins' ? 'bg-green-500/20 text-green-300' : 'bg-blue-500/20 text-blue-300' }`}>
-              Last: {recentPrize.label}
-            </div>
-           )} */}
-        </div>
-        
-        <div className="w-28 text-right cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsHistoryOpen(true)}>
-          <div className="bg-gradient-to-r from-slate-800 to-slate-700 inline-block px-4 py-2 rounded-xl shadow-lg border border-slate-600/30">
-            <span className="font-bold text-green-400 text-lg">{userSpins.toLocaleString()}</span>
-            <span className="text-sm text-slate-300 ml-1">Spins</span>
-          </div>
-        </div>
-      </header>
+<header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md z-40 p-4 border-b border-slate-700/30 flex items-center justify-between">
+  <button onClick={() => navigate(-1)} className="flex items-center font-semibold text-white/90 hover:text-white transition-colors w-24">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </svg>
+    <span className="ml-1 text-sm">Back</span>
+  </button>
+  
+  <div className="flex flex-col items-center">
+    <h1 className="text-lg font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">SPIN WHEEL</h1>
+  </div>
+  
+  <div className="w-24 text-right cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsHistoryOpen(true)}>
+    <div className="bg-gradient-to-r from-slate-800 to-slate-700 inline-flex items-center px-3 py-1.5 rounded-lg shadow-lg border border-slate-600/30">
+      <span className="font-bold text-green-400 text-base">{userSpins.toLocaleString()}</span>
+      <span className="text-xs text-slate-300 ml-1">Spins</span>
+    </div>
+  </div>
+</header>
       
       <main className="pt-24 pb-12 px-5 flex flex-col items-center justify-center relative z-10">
         <div className="w-full max-w-md mx-auto space-y-8">
@@ -240,23 +291,49 @@ const SpinWheelPage: React.FC<{
               prizes={SPIN_WHEEL_PRIZES}
             />
             
-            <div className="flex space-x-4 mt-6">
-              <button onClick={() => handleSpin()} disabled={isSpinning || isAutoSpinning || userSpins <= 0} className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-4 px-6 rounded-2xl text-lg hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 transform hover:scale-105 disabled:transform-none flex items-center justify-center space-x-3">
-                {isSpinning ? (
-                  <><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span className="font-medium">SPINNING...</span></>
-                ) : (
-                  <><span className="text-xl">🎰</span><span className="font-medium">SPIN</span></>
-                )}
-              </button>
-              
-              <button onClick={toggleAutoSpin} disabled={isSpinning || userSpins <= 0} className={`flex-1 font-bold py-4 px-6 rounded-2xl text-lg transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg transform hover:scale-105 disabled:transform-none flex items-center justify-center space-x-3 ${ isAutoSpinning ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25' : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25' }`}>
-                {isAutoSpinning ? (
-                  <><div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div><span className="font-medium">STOP</span></>
-                ) : (
-                  <><span className="text-xl">⚡</span><span className="font-medium">AUTO</span></>
-                )}
-              </button>
-            </div>
+<div className="flex space-x-3 mt-6">
+  <button 
+    onClick={() => handleSpin()} 
+    disabled={isSpinning || isAutoSpinning || userSpins <= 0} 
+    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-xl text-base hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 flex items-center justify-center min-w-0"
+  >
+    {isSpinning ? (
+      <div className="flex items-center justify-center space-x-2">
+        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-sm font-medium">SPINNING</span>
+      </div>
+    ) : (
+      <div className="flex items-center justify-center space-x-2">
+        <span className="text-lg">🎰</span>
+        <span className="text-sm font-medium">SPIN</span>
+      </div>
+    )}
+  </button>
+  
+  <button 
+    onClick={toggleAutoSpin} 
+    disabled={isSpinning || userSpins <= 0} 
+    className={`flex-1 font-bold py-3 px-4 rounded-xl text-base transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg flex items-center justify-center min-w-0 ${
+      isAutoSpinning 
+        ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25' 
+        : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25'
+    }`}
+  >
+    {isAutoSpinning ? (
+      <div className="flex items-center justify-center space-x-2">
+        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-sm font-medium">STOP</span>
+      </div>
+    ) : (
+      <div className="flex items-center justify-center space-x-2">
+        <span className="text-lg">⚡</span>
+        <span className="text-sm font-medium">AUTO</span>
+      </div>
+    )}
+  </button>
+</div>
+
+            
           </div>
 
           <div className="space-y-5">
@@ -277,7 +354,7 @@ const SpinWheelPage: React.FC<{
       </main>
 
       <footer className="fixed bottom-0 left-0 right-0 bg-slate-900/80 backdrop-blur-md z-40 p-4 border-t border-slate-700/30 text-center">
-        <p className="text-slate-400 text-sm">Spin wisely! Each spin costs 1 spin token. Auto spin includes occasional ads.</p>
+        <p className="text-slate-400 text-sm">Auto spin includes occasional ads.</p>
       </footer>
     </div>
   );

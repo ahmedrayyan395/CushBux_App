@@ -22,140 +22,130 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
     const [tonConnectUI] = useTonConnectUI();
     const wallet = useTonWallet();
 
-// In BuySpinsModal component, modify the handlePurchase function:
+    const handlePurchase = async (packageId: string) => {
+        if (isLoading || !user) return;
 
-const handlePurchase = async (packageId: string) => {
-  if (isLoading || !user) return;
-
-  const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
-  if (!selectedPackage) {
-    alert("Invalid package selected.");
-    return;
-  }
-
-  setIsLoading(packageId);
-
-  try {
-    if (paymentMethod === 'TON') {
-      const userTonBalance = user.ad_credit ? Number(user.ad_credit) : 0;
-
-      if (userTonBalance >= selectedPackage.costTon) {
-        // ✅ Use in-app TON balance - update user immediately
-        const result = await buySpins({
-          packageId,
-          paymentMethod: 'TON',
-          userId: user.id
-        });
-
-        if (result.success && result.user) {
-          setUser(result.user); // This updates the user immediately
-          alert(`Purchased ${selectedPackage.spins} spins using your in-app TON balance!`);
-          onClose();
-        } else {
-          throw new Error(result.message || "Failed to process TON purchase.");
-        }
-      } else {
-        // ✅ Blockchain TON payment - optimistic update
-        if (!wallet) {
-          tonConnectUI.openModal();
-          setIsLoading(null);
-          return;
+        const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
+        if (!selectedPackage) {
+            alert("Invalid package selected.");
+            return;
         }
 
-        // Optimistic update: immediately add spins to user
-        const optimisticUser = {
-          ...user,
-          spins: (user.spins || 0) + selectedPackage.spins,
-          ad_credit: user.ad_credit ? (Number(user.ad_credit) - selectedPackage.costTon).toString() : '0'        };
-        setUser(optimisticUser as User);
+        setIsLoading(packageId);
 
-        const transaction = {
-          validUntil: Math.floor(Date.now() / 1000) + 300,
-          messages: [
-            {
-              address: MERCHANT_WALLET_ADDRESS,
-              amount: Math.round(selectedPackage.costTon * 1e9).toString(),
-            },
-          ],
-        };
+        try {
+            if (paymentMethod === 'TON') {
+                const userTonBalance = user.ton ? Number(user.ton) : 0;
 
-        const resultBoc = await tonConnectUI.sendTransaction(transaction);
-        
-        if (!resultBoc?.boc) {
-          // Revert optimistic update if transaction fails
-          setUser(user);
-          throw new Error("Transaction failed: no BOC received from wallet.");
+                if (userTonBalance >= selectedPackage.costTon) {
+                    // ✅ Use in-app TON balance - update user immediately
+                    const result = await buySpins({
+                        packageId,
+                        paymentMethod: 'TON',
+                        userId: user.id
+                    });
+
+                    if (result.success && result.user) {
+                        setUser(result.user);
+                        alert(`Purchased ${selectedPackage.spins} spins using your in-app TON balance!`);
+                        onClose();
+                    } else {
+                        throw new Error(result.message || "Failed to process TON purchase.");
+                    }
+                } else {
+                    // ✅ Blockchain TON payment - optimistic update
+                    if (!wallet) {
+                        tonConnectUI.openModal();
+                        setIsLoading(null);
+                        return;
+                    }
+
+                    const optimisticUser = {
+                        ...user,
+                        spins: (user.spins || 0) + selectedPackage.spins,
+                        ton: user.ton ? (Number(user.ton) - selectedPackage.costTon).toString() : '0'
+                    };
+                    setUser(optimisticUser as User);
+
+                    const transaction = {
+                        validUntil: Math.floor(Date.now() / 1000) + 300,
+                        messages: [
+                            {
+                                address: MERCHANT_WALLET_ADDRESS,
+                                amount: Math.round(selectedPackage.costTon * 1e9).toString(),
+                            },
+                        ],
+                    };
+
+                    const resultBoc = await tonConnectUI.sendTransaction(transaction);
+                    
+                    if (!resultBoc?.boc) {
+                        setUser(user);
+                        throw new Error("Transaction failed: no BOC received from wallet.");
+                    }
+
+                    onClose();
+                    alert("✅ Payment sent! Spins will be credited after blockchain confirmation.");
+
+                    buySpins({
+                        packageId,
+                        paymentMethod: 'TON_BLOCKCHAIN',
+                        userId: user.id,
+                        transactionHash: resultBoc.boc
+                    }).then(result => {
+                        if (result.success && result.user) {
+                            setUser(result.user);
+                        }
+                    }).catch(err => {
+                        console.error("Backend error:", err);
+                    });
+                }
+            } else {
+                // ✅ COINS payment - update immediately
+                const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
+                const userCoinBalance = user.coins ?? 0;
+
+                if (userCoinBalance < costInCoins) {
+                    throw new Error("Insufficient coins. Complete more tasks to earn coins!");
+                }
+
+                const optimisticUser = {
+                    ...user,
+                    spins: (user.spins || 0) + selectedPackage.spins,
+                    coins: (user.coins || 0) - costInCoins
+                };
+                setUser(optimisticUser as User);
+
+                const result = await buySpins({
+                    packageId,
+                    paymentMethod: 'COINS',
+                    userId: user.id
+                });
+
+                if (result.success && result.user) {
+                    setUser(result.user);
+                    alert(`Purchased ${selectedPackage.spins} spins!`);
+                    onClose();
+                } else {
+                    setUser(user);
+                    throw new Error(result.message || "Purchase failed.");
+                }
+            }
+        } catch (error: any) {
+            console.error("Purchase failed:", error);
+            const errorMessage = error.message || "Transaction was cancelled or failed.";
+
+            if (
+                !errorMessage.toLowerCase().includes("rejected") &&
+                !errorMessage.toLowerCase().includes("cancelled") &&
+                !errorMessage.toLowerCase().includes("user closed")
+            ) {
+                alert(errorMessage.length > 100 ? "Transaction failed. Please try again." : errorMessage);
+            }
+        } finally {
+            setIsLoading(null);
         }
-
-        onClose();
-        alert("✅ Payment sent! Spins will be credited after blockchain confirmation.");
-
-        // Fire-and-forget backend call
-        buySpins({
-          packageId,
-          paymentMethod: 'TON_BLOCKCHAIN',
-          userId: user.id,
-          transactionHash: resultBoc.boc
-        }).then(result => {
-          if (result.success && result.user) {
-            // Final update with server data
-            setUser(result.user);
-          }
-        }).catch(err => {
-          console.error("Backend error:", err);
-          // Keep the optimistic update as fallback
-        });
-      }
-    } else {
-      // ✅ COINS payment - update immediately
-      const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
-      const userCoinBalance = user.coins ?? 0;
-
-      if (userCoinBalance < costInCoins) {
-        throw new Error("Insufficient coins. Complete more tasks to earn coins!");
-      }
-
-      // Optimistic update
-      const optimisticUser = {
-        ...user,
-        spins: (user.spins || 0) + selectedPackage.spins,
-        coins: (user.coins || 0) - costInCoins
-      };
-      setUser(optimisticUser as User);
-
-      const result = await buySpins({
-        packageId,
-        paymentMethod: 'COINS',
-        userId: user.id
-      });
-
-      if (result.success && result.user) {
-        // Final update with server data
-        setUser(result.user);
-        alert(`Purchased ${selectedPackage.spins} spins!`);
-        onClose();
-      } else {
-        // Revert optimistic update if API call fails
-        setUser(user);
-        throw new Error(result.message || "Purchase failed.");
-      }
-    }
-  } catch (error: any) {
-    console.error("Purchase failed:", error);
-    const errorMessage = error.message || "Transaction was cancelled or failed.";
-
-    if (
-      !errorMessage.toLowerCase().includes("rejected") &&
-      !errorMessage.toLowerCase().includes("cancelled") &&
-      !errorMessage.toLowerCase().includes("user closed")
-    ) {
-      alert(errorMessage.length > 100 ? "Transaction failed. Please try again." : errorMessage);
-    }
-  } finally {
-    setIsLoading(null);
-  }
-};
-
+    };
 
     const formatCoinCost = (costInCoins: number) => {
         if (costInCoins >= 1000000) {
@@ -173,7 +163,7 @@ const handlePurchase = async (packageId: string) => {
             const canAfford = (user?.coins ?? 0) >= costInCoins;
             return { canAfford, costDisplay: formatCoinCost(costInCoins) };
         } else {
-            const userTonBalance = user?.ad_credit ? Number(user.ad_credit) : 0;
+            const userTonBalance = user?.ton ? Number(user.ton) : 0;
             const canAffordWithInAppTon = userTonBalance >= pkg.costTon;
             return { 
                 canAfford: canAffordWithInAppTon, 
@@ -187,11 +177,18 @@ const handlePurchase = async (packageId: string) => {
 
     return (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-lg border border-slate-700 p-6 space-y-6">
-                <div className="flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-white">Spin Store</h2>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl">&times;</button>
-                </div>
+            <div className="bg-slate-800 rounded-2xl w-full max-w-md shadow-lg border border-slate-700 p-6 space-y-6 relative max-h-[90vh] overflow-y-auto">
+                
+                {/* Close button - now fixed to top-right corner */}
+                <button 
+                    onClick={onClose} 
+                    className="absolute top-3 right-3 bg-red-500 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
+                >
+                    <span className="text-lg font-bold">&times;</span>
+                </button>
+
+                {/* Header */}
+                <h2 className="text-2xl font-bold text-white text-center">Spin Store</h2>
 
                 {/* Balance Display */}
                 <div className="bg-slate-700/50 p-4 rounded-xl">
@@ -204,7 +201,7 @@ const handlePurchase = async (packageId: string) => {
                     <div className="flex justify-between items-center">
                         <span className="text-slate-300">Your TON:</span>
                         <span className="text-blue-400 font-bold">
-                            {user?.ad_credit ? Number(user.ad_credit).toFixed(3) : '0.000'} TON
+                            {user?.ton ? Number(user.ton).toFixed(3) : '0.000'} TON
                         </span>
                     </div>
                 </div>
@@ -213,20 +210,20 @@ const handlePurchase = async (packageId: string) => {
                 <div className="bg-slate-700 p-1 rounded-xl flex space-x-1">
                     <button 
                         onClick={() => setPaymentMethod('COINS')}
-                        className={`w-full p-2 rounded-lg font-bold transition-colors ${paymentMethod === 'COINS' ? 'bg-green-500 text-white' : 'text-slate-300'}`}
+                        className={`w-full p-2 rounded-lg font-bold transition-colors ${paymentMethod === 'COINS' ? 'bg-green-500 text-white' : 'text-slate-300 hover:text-white'}`}
                     >
                         Pay with Coins
                     </button>
                     <button 
                         onClick={() => setPaymentMethod('TON')}
-                        className={`w-full p-2 rounded-lg font-bold transition-colors ${paymentMethod === 'TON' ? 'bg-blue-500 text-white' : 'text-slate-300'}`}
+                        className={`w-full p-2 rounded-lg font-bold transition-colors ${paymentMethod === 'TON' ? 'bg-blue-500 text-white' : 'text-slate-300 hover:text-white'}`}
                     >
                         Pay with TON
                     </button>
                 </div>
 
                 {/* Packages */}
-                <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                <div className="space-y-3">
                     {SPIN_STORE_PACKAGES.map(pkg => {
                         const { canAfford, costDisplay, requiresBlockchain } = getPackageAffordability(pkg);
                         const isProcessing = isLoading === pkg.id;
