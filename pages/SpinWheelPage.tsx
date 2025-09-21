@@ -76,9 +76,10 @@ const SpinWheelPage: React.FC<{
   }, [user?.spins]);
 
   const handleSpin = async (): Promise<boolean> => {
+  // Use currentSpins.current instead of user?.spins for immediate accuracy
   if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
-  setIsSpinning(true); // Start spinning immediately for visual feedback
+  setIsSpinning(true);
 
   try {
     const result = await spinWheel(user.id);
@@ -87,6 +88,7 @@ const SpinWheelPage: React.FC<{
       setIsSpinning(false);
       return false;
     }
+
 
     // Calculate rotation based on the actual prize
     const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
@@ -106,7 +108,7 @@ const SpinWheelPage: React.FC<{
     // Update user state
     if (result.user) {
       setUser(result.user);
-      currentSpins.current = result.user.spins;
+      currentSpins.current = result.user.spins; // Update the ref immediately
       setRecentPrize(result.prize || null);
     }
 

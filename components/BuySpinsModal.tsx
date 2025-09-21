@@ -22,11 +22,13 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
     const [tonConnectUI] = useTonConnectUI();
     const wallet = useTonWallet();
 
-   const handlePurchase = async (packageId: string) => {
+// In BuySpinsModal component, modify the handlePurchase function:
+
+const handlePurchase = async (packageId: string) => {
   if (isLoading || !user) return;
 
   const selectedPackage = SPIN_STORE_PACKAGES.find(p => p.id === packageId);
-  if (!selectedPackage) {buySpins
+  if (!selectedPackage) {
     alert("Invalid package selected.");
     return;
   }
@@ -38,7 +40,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
       const userTonBalance = user.ad_credit ? Number(user.ad_credit) : 0;
 
       if (userTonBalance >= selectedPackage.costTon) {
-        // ✅ Use in-app TON balance
+        // ✅ Use in-app TON balance - update user immediately
         const result = await buySpins({
           packageId,
           paymentMethod: 'TON',
@@ -46,26 +48,33 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
         });
 
         if (result.success && result.user) {
-          setUser(result.user);
+          setUser(result.user); // This updates the user immediately
           alert(`Purchased ${selectedPackage.spins} spins using your in-app TON balance!`);
           onClose();
         } else {
           throw new Error(result.message || "Failed to process TON purchase.");
         }
       } else {
-        // ✅ Blockchain TON payment
+        // ✅ Blockchain TON payment - optimistic update
         if (!wallet) {
           tonConnectUI.openModal();
           setIsLoading(null);
           return;
         }
 
+        // Optimistic update: immediately add spins to user
+        const optimisticUser = {
+          ...user,
+          spins: (user.spins || 0) + selectedPackage.spins,
+          ad_credit: user.ad_credit ? (Number(user.ad_credit) - selectedPackage.costTon).toString() : '0'        };
+        setUser(optimisticUser as User);
+
         const transaction = {
           validUntil: Math.floor(Date.now() / 1000) + 300,
           messages: [
             {
               address: MERCHANT_WALLET_ADDRESS,
-              amount: Math.round(selectedPackage.costTon * 1e9).toString(), // nanoton
+              amount: Math.round(selectedPackage.costTon * 1e9).toString(),
             },
           ],
         };
@@ -73,10 +82,11 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
         const resultBoc = await tonConnectUI.sendTransaction(transaction);
         
         if (!resultBoc?.boc) {
+          // Revert optimistic update if transaction fails
+          setUser(user);
           throw new Error("Transaction failed: no BOC received from wallet.");
         }
 
-        // ✅ Immediately close modal (don’t wait for backend)
         onClose();
         alert("✅ Payment sent! Spins will be credited after blockchain confirmation.");
 
@@ -86,16 +96,32 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
           paymentMethod: 'TON_BLOCKCHAIN',
           userId: user.id,
           transactionHash: resultBoc.boc
-        }).catch(err => console.error("Backend error:", err));
+        }).then(result => {
+          if (result.success && result.user) {
+            // Final update with server data
+            setUser(result.user);
+          }
+        }).catch(err => {
+          console.error("Backend error:", err);
+          // Keep the optimistic update as fallback
+        });
       }
     } else {
-      // ✅ COINS payment
+      // ✅ COINS payment - update immediately
       const costInCoins = selectedPackage.costTon * CONVERSION_RATE;
       const userCoinBalance = user.coins ?? 0;
 
       if (userCoinBalance < costInCoins) {
         throw new Error("Insufficient coins. Complete more tasks to earn coins!");
       }
+
+      // Optimistic update
+      const optimisticUser = {
+        ...user,
+        spins: (user.spins || 0) + selectedPackage.spins,
+        coins: (user.coins || 0) - costInCoins
+      };
+      setUser(optimisticUser as User);
 
       const result = await buySpins({
         packageId,
@@ -104,10 +130,13 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
       });
 
       if (result.success && result.user) {
+        // Final update with server data
         setUser(result.user);
         alert(`Purchased ${selectedPackage.spins} spins!`);
         onClose();
       } else {
+        // Revert optimistic update if API call fails
+        setUser(user);
         throw new Error(result.message || "Purchase failed.");
       }
     }

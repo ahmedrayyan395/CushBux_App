@@ -35,8 +35,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 
 // const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
 
