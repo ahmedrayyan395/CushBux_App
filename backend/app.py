@@ -96,7 +96,7 @@ def seed_users():
             ton=0,
             referral_earnings=0,
             spins=5,
-            ad_credit=0.0,
+            ad_credit=177.0,
             ads_watched_today=2,
             tasks_completed_today_for_spin=1,
             friends_invited_today_for_spin=0,
@@ -324,14 +324,14 @@ user_task_completion = db.Table('user_task_completions',
 # Tracks friendships (many-to-many relationship on User)
 
 
+
 class UserCampaign(db.Model):
     __tablename__ = 'user_campaigns'
 
     # Common fields for User and Partner campaigns
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     creator_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
-    title = db.Column(db.String, nullable=False)  # Campaign title in any language
-    link = db.Column(db.String, nullable=False)
+    link = db.Column(db.String, nullable=False)  # Title field removed
     
     status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
     completions = db.Column(db.Integer, default=0)
@@ -341,6 +341,9 @@ class UserCampaign(db.Model):
     
     # New field for subscription validation
     check_subscription = db.Column(db.Boolean, default=False)
+    
+    # Field for storing languages as JSON array (replacing title)
+    langs = db.Column(db.JSON, nullable=False, default=[])  # Store as array like ['en', 'es', 'fr']
     
     # Discriminator for inheritance
     type = db.Column(db.String(50)) 
@@ -356,16 +359,15 @@ class UserCampaign(db.Model):
         return {
             'id': self.id,
             'creator_id': self.creator_id,
-            'title': self.title,  # Include the title field
             'link': self.link,
             'status': self.status.name if self.status else None,
             'completions': self.completions,
             'goal': self.goal,
             'cost': str(self.cost),  # Convert Decimal to string for JSON
             'category': self.category.name if self.category else None,
-            'check_subscription': self.check_subscription,  # Include the new field
+            'check_subscription': self.check_subscription,
+            'langs': self.langs,  # Include the langs field
             'type': self.type
-            # Removed 'langs' field
         }
 
 class PartnerCampaign(UserCampaign):
@@ -1092,8 +1094,8 @@ def create_campaign():
     # Deduct cost safely
     user.ad_credit -= Decimal(str(data['cost']))
 
-    # Required fields
-    required = ['user_id', 'link', 'title', 'goal', 'cost', 'category']
+    # Required fields (title removed from required)
+    required = ['user_id', 'link', 'goal', 'cost', 'category']
     if not all(k in data for k in required):
         return jsonify({
             "success": False,
@@ -1117,31 +1119,48 @@ def create_campaign():
             "message": "Invalid category value"
         }), 400
 
+    # Parse languages from langs field
+    langs = data.get('langs', [])
+    
+    # If langs is a string, convert to array (for backward compatibility)
+    if isinstance(langs, str):
+        langs = [lang.strip() for lang in langs.split(',')]
+    
+    # Validate language codes
+    valid_language_codes = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ar', 'hi', 'tr']
+    langs = [lang for lang in langs if lang in valid_language_codes]
+    
+    if not langs:
+        return jsonify({
+            "success": False,
+            "message": "At least one valid language must be selected"
+        }), 400
+
     # Create the right campaign type
     if 'requiredLevel' in data:
         new_campaign = PartnerCampaign(
             creator_id=data['user_id'],
             link=data['link'],
-            title=data['title'],
             status="ACTIVE",
             completions=0,
             goal=data['goal'],
             cost=Decimal(str(data['cost'])),
             category=category,
             required_level=data['requiredLevel'],
-            check_subscription=data.get('checkSubscription', False)
+            check_subscription=data.get('checkSubscription', False),
+            langs=langs  # Store languages in langs field
         )
     else:
         new_campaign = UserCampaign(
             creator_id=data['user_id'],
             link=data['link'],
-            title=data['title'],
             status="ACTIVE",
             completions=0,
             goal=data['goal'],
             cost=Decimal(str(data['cost'])),
             category=category,
-            check_subscription=data.get('checkSubscription', False)
+            check_subscription=data.get('checkSubscription', False),
+            langs=langs  # Store languages in langs field
         )
 
     db.session.add(new_campaign)
@@ -1150,9 +1169,10 @@ def create_campaign():
     return jsonify({
         "success": True,
         "message": "Campaign created successfully",
-        "newCampaign": new_campaign.to_dict(),  # This will include the webhook token
+        "newCampaign": new_campaign.to_dict(),  # This will include the langs array
         "user": user.to_dict()
     }), 201
+
 
 
 
@@ -1303,7 +1323,7 @@ def claim_task():
         channel_username = campaign.link.replace('https://t.me/', '').split('?')[0]
         
         # Make direct Telegram API request to check membership
-        is_member = check_telegram_membership_direct(channel_username, user.telegram_id)
+        is_member = check_telegram_membership_direct(channel_username, user.id)
         
         if not is_member:
             return jsonify({

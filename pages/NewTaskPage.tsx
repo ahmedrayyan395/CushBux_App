@@ -40,7 +40,11 @@ const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-white font-semibold truncate pr-4">{campaign.link}</p>
-                {campaign.title && <p className="text-slate-400 text-sm mt-1">{campaign.title}</p>}
+                {campaign.langs && campaign.langs.length > 0 && (
+                  <p className="text-slate-400 text-sm mt-1">
+                    Languages: {campaign.langs.map(code => AVAILABLE_LANGUAGES.find(l => l.code === code)?.name).join(', ')}
+                  </p>
+                )}
               </div>
               <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>{campaign.status}</span>
             </div>
@@ -105,20 +109,18 @@ const ValidationInstructions: React.FC<{
     return (
       <div className="bg-purple-900/20 border border-purple-700/50 p-4 rounded-lg mt-4">
         <h4 className="text-purple-400 font-semibold mb-2">🎮 Validation Instructions for Game Tasks</h4>
-        
-  <div className="bg-purple-900/20 border border-purple-700/50 p-4 rounded-lg mt-4">
-    <h4 className="text-purple-400 font-semibold mb-2">Bot Task</h4>
-    <p className="text-purple-300 text-sm">
-      Users must start your bot using a deep link. Example:
-    </p>
-    <code className="text-purple-200 text-xs bg-purple-800 p-1 rounded block mt-1">
-      https://t.me/yourbot?start=ref_Text
-    </code>
-    <p className="text-purple-300 text-xs mt-2">
-      Make sure your bot can handle start commands.
-    </p>
-  </div>
-
+        <div className="bg-purple-900/20 border border-purple-700/50 p-4 rounded-lg mt-4">
+          <h4 className="text-purple-400 font-semibold mb-2">Bot Task</h4>
+          <p className="text-purple-300 text-sm">
+            Users must start your bot using a deep link. Example:
+          </p>
+          <code className="text-purple-200 text-xs bg-purple-800 p-1 rounded block mt-1">
+            https://t.me/yourbot?start=ref_Text
+          </code>
+          <p className="text-purple-300 text-xs mt-2">
+            Make sure your bot can handle start commands.
+          </p>
+        </div>
       </div>
     );
   }
@@ -126,18 +128,75 @@ const ValidationInstructions: React.FC<{
   return null;
 };
 
+// Available languages for selection
+const AVAILABLE_LANGUAGES = [
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Spanish' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'it', name: 'Italian' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'ru', name: 'Russian' },
+  { code: 'zh', name: 'Chinese' },
+  { code: 'ja', name: 'Japanese' },
+  { code: 'ar', name: 'Arabic' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'tr', name: 'Turkish' },
+];
+
+const LanguageSelector: React.FC<{
+  selectedLanguages: string[];
+  onLanguageToggle: (languageCode: string) => void;
+}> = ({ selectedLanguages, onLanguageToggle }) => {
+  return (
+    <section className="space-y-3">
+      <h3 className="text-base font-semibold text-slate-300">Task Languages</h3>
+      <p className="text-slate-400 text-sm">Select the languages for your task (users will see tasks in their preferred language)</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+        {AVAILABLE_LANGUAGES.map(language => (
+          <button
+            key={language.code}
+            onClick={() => onLanguageToggle(language.code)}
+            className={`p-2 rounded-lg border-2 font-semibold text-sm transition-all ${
+              selectedLanguages.includes(language.code)
+                ? 'bg-green-500 border-green-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-green-500'
+            }`}
+          >
+            {language.name}
+          </button>
+        ))}
+      </div>
+      {selectedLanguages.length > 0 && (
+        <p className="text-green-400 text-sm">
+          Selected: {selectedLanguages.map(code => AVAILABLE_LANGUAGES.find(l => l.code === code)?.name).join(', ')}
+        </p>
+      )}
+    </section>
+  );
+};
+
 const AddTaskFormComponent: React.FC<{
     taskLink: string;
     setTaskLink: (value: string) => void;
-    campaignTitle: string;
-    setCampaignTitle: (value: string) => void;
+    selectedLanguages: string[];
+    setSelectedLanguages: (languages: string[]) => void;
     checkSubscription: boolean;
     setCheckSubscription: (value: boolean) => void;
     selectedTier: CompletionTier | null;
     setSelectedTier: (tier: CompletionTier) => void;
     selectedCategory: string;
     setSelectedCategory: (category: string) => void;
-}> = ({ taskLink, setTaskLink, campaignTitle, setCampaignTitle, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedCategory, setSelectedCategory }) => {
+}> = ({ taskLink, setTaskLink, selectedLanguages, setSelectedLanguages, checkSubscription, setCheckSubscription, selectedTier, setSelectedTier, selectedCategory, setSelectedCategory }) => {
+    
+    const handleLanguageToggle = (languageCode: string) => {
+        if (selectedLanguages.includes(languageCode)) {
+            setSelectedLanguages(selectedLanguages.filter(lang => lang !== languageCode));
+        } else {
+            setSelectedLanguages([...selectedLanguages, languageCode]);
+        }
+    };
+
     return (
         <div className="space-y-6">
             {/* Category Selection */}
@@ -157,21 +216,6 @@ const AddTaskFormComponent: React.FC<{
                         Game
                     </button>
                 </div>
-            </section>
-
-            {/* Campaign Title input */}
-            <section className="space-y-2">
-                <label htmlFor="campaign-title" className="text-base font-semibold text-slate-300">
-                    Campaign Title (in any language)
-                </label>
-                <input
-                    id="campaign-title"
-                    type="text"
-                    value={campaignTitle}
-                    onChange={(e) => setCampaignTitle(e.target.value)}
-                    placeholder="Enter a title for your campaign"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
-                />
             </section>
 
             {/* Link input */}
@@ -221,6 +265,12 @@ const AddTaskFormComponent: React.FC<{
 
             {/* Validation Instructions */}
             <ValidationInstructions category={selectedCategory} checkSubscription={checkSubscription} />
+
+            {/* Language Selection - Positioned at the bottom */}
+            <LanguageSelector 
+                selectedLanguages={selectedLanguages}
+                onLanguageToggle={handleLanguageToggle}
+            />
         </div>
     );
 };
@@ -238,7 +288,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   
   // Form state
   const [taskLink, setTaskLink] = useState('');
-  const [campaignTitle, setCampaignTitle] = useState('');
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']); // Default to English
   const [checkSubscription, setCheckSubscription] = useState(false);
   const [selectedTier, setSelectedTier] = useState<CompletionTier | null>(COMPLETION_TIERS[0]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Social');
@@ -316,7 +366,7 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
 };
 
   const adBalance = user?.ad_credit || 0;
-  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && campaignTitle.trim().length > 0;
+  const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
   const canAfford = adBalance >= totalCost;
   
   const handleCreateCampaign = async () => {
@@ -327,20 +377,19 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
         const result = await addUserCampaignAPI({
         userid: user.id,
         link: taskLink,
-        title: campaignTitle.trim(),
         goal: selectedTier.completions,
         cost: totalCost,
         category: selectedCategory,
         checkSubscription: selectedCategory === 'Social' ? checkSubscription : false,
+        langs: selectedLanguages,
       });
-
 
           if (result.success && result.user) {
               alert(result.message);
               setUser(result.user);
               // Reset form
               setTaskLink('');
-              setCampaignTitle('');
+              setSelectedLanguages(['en']);
               setCheckSubscription(false);
               setSelectedTier(COMPLETION_TIERS[0]);
               setSelectedCategory('Social');
@@ -401,8 +450,8 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
               <AddTaskFormComponent 
                   taskLink={taskLink}
                   setTaskLink={setTaskLink}
-                  campaignTitle={campaignTitle}
-                  setCampaignTitle={setCampaignTitle}
+                  selectedLanguages={selectedLanguages}
+                  setSelectedLanguages={setSelectedLanguages}
                   checkSubscription={checkSubscription}
                   setCheckSubscription={setCheckSubscription}
                   selectedTier={selectedTier}

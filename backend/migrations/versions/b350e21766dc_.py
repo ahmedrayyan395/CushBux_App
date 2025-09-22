@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 8ff8812bd3a8
+Revision ID: b350e21766dc
 Revises: 
-Create Date: 2025-09-21 11:11:06.832787
+Create Date: 2025-09-22 20:01:36.240211
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '8ff8812bd3a8'
+revision = 'b350e21766dc'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -135,7 +135,6 @@ def upgrade():
     op.create_table('user_campaigns',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('creator_id', sa.BigInteger(), nullable=False),
-    sa.Column('title', sa.String(), nullable=False),
     sa.Column('link', sa.String(), nullable=False),
     sa.Column('status', sa.Enum('ACTIVE', 'PAUSED', 'COMPLETED', name='campaignstatus'), nullable=True),
     sa.Column('completions', sa.Integer(), nullable=True),
@@ -143,6 +142,7 @@ def upgrade():
     sa.Column('cost', sa.Numeric(precision=12, scale=4), nullable=False),
     sa.Column('category', sa.Enum('DAILY', 'GAME', 'SOCIAL', 'PARTNER', name='taskcategory'), nullable=False),
     sa.Column('check_subscription', sa.Boolean(), nullable=True),
+    sa.Column('langs', sa.JSON(), nullable=False),
     sa.Column('type', sa.String(length=50), nullable=True),
     sa.ForeignKeyConstraint(['creator_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')

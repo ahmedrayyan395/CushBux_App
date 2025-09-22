@@ -35,8 +35,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
 
 // const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
 
@@ -472,12 +472,12 @@ export const addUserCampaignAPI = async (
   campaignData: {
     userid: number;
     link: string;
-    title: string;
     goal: number;
     cost: number;
     level?: number;
     category: string;
     checkSubscription?: boolean;
+    langs: string[]; // Required languages array
   }
 ): Promise<{
   success: boolean;
@@ -488,11 +488,11 @@ export const addUserCampaignAPI = async (
   const payload: any = {
     user_id: campaignData.userid,
     link: campaignData.link,
-    title: campaignData.title,
     goal: campaignData.goal,
     cost: campaignData.cost,
     category: campaignData.category,
     checkSubscription: campaignData.checkSubscription || false,
+    langs: campaignData.langs, // Send languages array directly
   };
 
   if (campaignData.level !== undefined) {
@@ -504,7 +504,6 @@ export const addUserCampaignAPI = async (
     body: JSON.stringify(payload),
   });
 };
-
 
 
 
