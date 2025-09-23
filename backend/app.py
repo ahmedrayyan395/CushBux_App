@@ -36,6 +36,7 @@ from dotenv import load_dotenv
 # from backend.routes import admin_management
 from flask_cors import cross_origin
 
+
 # Initialize the SQLAlchemy extension
 load_dotenv()
 app = Flask(__name__)
@@ -100,13 +101,14 @@ def seed_users():
             ads_watched_today=2,
             tasks_completed_today_for_spin=1,
             friends_invited_today_for_spin=0,
+            language_code="en",  # English user
             space_defender_progress={"weaponLevel": 2, "shieldLevel": 1, "speedLevel": 1},
             street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
             banned=False
         ),
         User(
             id=3,   # Telegram ID
-            name="Alice",
+            name="أحمد",  # Arabic name
             coins=50000000,
             ton=125,
             referral_earnings=0,
@@ -115,13 +117,11 @@ def seed_users():
             ads_watched_today=2,
             tasks_completed_today_for_spin=1,
             friends_invited_today_for_spin=0,
+            language_code="ar",  # Arabic user
             space_defender_progress={"weaponLevel": 2, "shieldLevel": 1, "speedLevel": 1},
             street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
             banned=False
         ),
-       
-    
-    
     ]
 
     db.session.add_all(users)
@@ -129,7 +129,78 @@ def seed_users():
     click.echo("✅ Users seeded successfully")
 
 
+@app.cli.command("seed-quests")
+@with_appcontext
+def seed_quests():
+    """Initialize default quests in the database"""
+    
+    default_quests = [
+        # Invite Friends
+        {
+            'id': 'q_invite_300',
+            'title': 'Invite 300 friends',
+            'icon': '👥',
+            'reward': 300000,
+            'total_progress': 300,
+            'quest_type': 'invite',
+            'is_active': True
+        },
+        
+        # Game Tasks (Tiered)
+        {'id': 'q_game_10', 'title': 'Complete 10 game tasks', 'icon': '🎮', 'reward': 10000, 'total_progress': 10, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_25', 'title': 'Complete 25 game tasks', 'icon': '🎮', 'reward': 25000, 'total_progress': 25, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_50', 'title': 'Complete 50 game tasks', 'icon': '🎮', 'reward': 50000, 'total_progress': 50, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_100', 'title': 'Complete 100 game tasks', 'icon': '🎮', 'reward': 100000, 'total_progress': 100, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_500', 'title': 'Complete 500 game tasks', 'icon': '🎮', 'reward': 500000, 'total_progress': 500, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_1000', 'title': 'Complete 1,000 game tasks', 'icon': '🎮', 'reward': 1000000, 'total_progress': 1000, 'quest_type': 'game', 'is_active': True},
+        {'id': 'q_game_2500', 'title': 'Complete 2,500 game tasks', 'icon': '🎮', 'reward': 2500000, 'total_progress': 2500, 'quest_type': 'game', 'is_active': True},
 
+        # Social Tasks (Tiered)
+        {'id': 'q_social_10', 'title': 'Complete 10 social tasks', 'icon': '📱', 'reward': 10000, 'total_progress': 10, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_25', 'title': 'Complete 25 social tasks', 'icon': '📱', 'reward': 25000, 'total_progress': 25, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_50', 'title': 'Complete 50 social tasks', 'icon': '📱', 'reward': 50000, 'total_progress': 50, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_100', 'title': 'Complete 100 social tasks', 'icon': '📱', 'reward': 100000, 'total_progress': 100, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_500', 'title': 'Complete 500 social tasks', 'icon': '📱', 'reward': 500000, 'total_progress': 500, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_1000', 'title': 'Complete 1,000 social tasks', 'icon': '📱', 'reward': 1000000, 'total_progress': 1000, 'quest_type': 'social', 'is_active': True},
+        {'id': 'q_social_2500', 'title': 'Complete 2,500 social tasks', 'icon': '📱', 'reward': 2500000, 'total_progress': 2500, 'quest_type': 'social', 'is_active': True},
+
+        # Partner Tasks (Tiered)
+        {'id': 'q_partner_10', 'title': 'Complete 10 partner tasks', 'icon': '🎁', 'reward': 100000, 'total_progress': 10, 'quest_type': 'partner', 'is_active': True},
+        {'id': 'q_partner_25', 'title': 'Complete 25 partner tasks', 'icon': '🎁', 'reward': 250000, 'total_progress': 25, 'quest_type': 'partner', 'is_active': True},
+        {'id': 'q_partner_50', 'title': 'Complete 50 partner tasks', 'icon': '🎁', 'reward': 500000, 'total_progress': 50, 'quest_type': 'partner', 'is_active': True},
+        {'id': 'q_partner_100', 'title': 'Complete 100 partner tasks', 'icon': '🎁', 'reward': 1200000, 'total_progress': 100, 'quest_type': 'partner', 'is_active': True},
+    ]
+    
+    created_count = 0
+    updated_count = 0
+    
+    for quest_data in default_quests:
+        # Check if quest already exists
+        existing_quest = Quest.query.get(quest_data['id'])
+        if not existing_quest:
+            quest = Quest(
+                id=quest_data['id'],
+                title=quest_data['title'],
+                icon=quest_data['icon'],
+                reward=quest_data['reward'],
+                total_progress=quest_data['total_progress'],
+                quest_type=quest_data['quest_type'],
+                is_active=quest_data['is_active']
+            )
+            db.session.add(quest)
+            created_count += 1
+        else:
+            # Update existing quest if needed
+            existing_quest.title = quest_data['title']
+            existing_quest.icon = quest_data['icon']
+            existing_quest.reward = quest_data['reward']
+            existing_quest.total_progress = quest_data['total_progress']
+            existing_quest.quest_type = quest_data['quest_type']
+            existing_quest.is_active = quest_data['is_active']
+            updated_count += 1
+    
+    db.session.commit()
+    click.echo(f"✅ Quests seeded successfully! Created: {created_count}, Updated: {updated_count}")
 # --- Enums defined from TypeScript interfaces ---
 
 class TransactionType(enum.Enum):
@@ -218,6 +289,11 @@ user_daily_task_completions = db.Table(
     db.Column("claimed", db.Boolean, default=False)  # ✅ track claim status
 )
 
+
+# models.py
+# models.py
+from datetime import datetime
+
 class User(db.Model):
     __tablename__ = 'users'
     
@@ -236,10 +312,19 @@ class User(db.Model):
     tasks_completed_today_for_spin = db.Column(db.Integer, nullable=False, default=0)
     friends_invited_today_for_spin = db.Column(db.Integer, nullable=False, default=0)
 
+    # Language preference (from Telegram)
+    language_code = db.Column(db.String(10), nullable=False, default='en')
+    
     # Game Progress stored as JSON
     space_defender_progress = db.Column(JSON, nullable=False, default=lambda: {"weaponLevel": 1, "shieldLevel": 1, "speedLevel": 1})
     street_racing_progress = db.Column(JSON, nullable=False, default=lambda: {"currentCar": 1, "unlockedCars": [1], "carUpgrades": {}, "careerPoints": 0, "adProgress": {"engine": 0, "tires": 0, "nitro": 0}})
 
+    # Quest Progress Tracking
+    total_game_tasks_completed = db.Column(db.Integer, nullable=False, default=0)
+    total_social_tasks_completed = db.Column(db.Integer, nullable=False, default=0)
+    total_partner_tasks_completed = db.Column(db.Integer, nullable=False, default=0)
+    total_friends_invited = db.Column(db.Integer, nullable=False, default=0)
+    
     banned = db.Column(db.Boolean, default=False)
     
     # Daily tasks relationship
@@ -256,11 +341,15 @@ class User(db.Model):
                               secondaryjoin=(id == friendships.c.friend_id),
                               backref="friend_of")
 
-    # Referral tracking - REMOVE referral_code since we're using user ID
+    # Referral tracking
     referred_by = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=True)
     referral_count = db.Column(db.Integer, default=0)
     total_referral_earnings = db.Column(db.BigInteger, default=0)
 
+    # Quest relationships
+    quest_progress = db.relationship('UserQuestProgress', back_populates='user', lazy='dynamic')
+    claimed_quests = db.relationship('ClaimedQuest', back_populates='user', lazy='dynamic')
+    
     # Relationships
     referrals = db.relationship('User',
                                 foreign_keys=[referred_by],
@@ -278,6 +367,7 @@ class User(db.Model):
             "ads_watched_today": self.ads_watched_today,
             "tasks_completed_today_for_spin": self.tasks_completed_today_for_spin,
             "friends_invited_today_for_spin": self.friends_invited_today_for_spin,
+            "language_code": self.language_code,
             "space_defender_progress": self.space_defender_progress,
             "street_racing_progress": self.street_racing_progress,
             "banned": self.banned,
@@ -285,7 +375,65 @@ class User(db.Model):
             "referral_count": self.referral_count,
             "total_referral_earnings": self.total_referral_earnings,
             "referred_by": self.referred_by,
-        }    
+            "total_game_tasks_completed": self.total_game_tasks_completed,
+            "total_social_tasks_completed": self.total_social_tasks_completed,
+            "total_partner_tasks_completed": self.total_partner_tasks_completed,
+            "total_friends_invited": self.total_friends_invited,
+        }
+
+# Quest Models
+class Quest(db.Model):
+    __tablename__ = 'quests'
+    
+    id = db.Column(db.String(50), primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    icon = db.Column(db.String(50), nullable=False)
+    reward = db.Column(db.BigInteger, nullable=False)
+    total_progress = db.Column(db.Integer, nullable=False)
+    quest_type = db.Column(db.String(20), nullable=False)  # 'game', 'social', 'partner', 'invite'
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    progress_entries = db.relationship('UserQuestProgress', back_populates='quest')
+    claimed_entries = db.relationship('ClaimedQuest', back_populates='quest')
+
+class UserQuestProgress(db.Model):
+    __tablename__ = 'user_quest_progress'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    quest_id = db.Column(db.String(50), db.ForeignKey('quests.id'), nullable=False)
+    current_progress = db.Column(db.Integer, nullable=False, default=0)
+    is_completed = db.Column(db.Boolean, default=False)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', back_populates='quest_progress')
+    quest = db.relationship('Quest', back_populates='progress_entries')
+    
+    __table_args__ = (db.UniqueConstraint('user_id', 'quest_id', name='_user_quest_uc'),)
+
+class ClaimedQuest(db.Model):
+    __tablename__ = 'claimed_quests'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), nullable=False)
+    quest_id = db.Column(db.String(50), db.ForeignKey('quests.id'), nullable=False)
+    claimed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reward_received = db.Column(db.BigInteger, nullable=False)
+    
+    # Relationships
+    user = db.relationship('User', back_populates='claimed_quests')
+    quest = db.relationship('Quest', back_populates='claimed_entries')
+    
+    __table_args__ = (db.UniqueConstraint('user_id', 'quest_id', name='_user_claimed_quest_uc'),)
+
+
+
+
+
 
 class Referral(db.Model):
     __tablename__ = 'referrals'
@@ -478,27 +626,8 @@ class DailyTask(db.Model):
 
 
 
-class Quest(db.Model):
-    __tablename__ = 'quests'
-    
-    id = db.Column(db.String, primary_key=True)
-    icon_name = db.Column(db.String, nullable=False)
-    title = db.Column(db.String, nullable=False)
-    reward = db.Column(db.Integer, nullable=False, comment="Reward in coins")
-    total_progress = db.Column(db.Integer, nullable=False, comment="The goal the user must reach")
-
-class UserQuestProgress(db.Model):
-    __tablename__ = 'user_quest_progress'
-    
-    user_id = db.Column(db.BigInteger, db.ForeignKey('users.id'), primary_key=True)
-    quest_id = db.Column(db.String, db.ForeignKey('quests.id'), primary_key=True)
-    current_progress = db.Column(db.Integer, default=0)
-    
-    user = db.relationship('User', backref='quest_progress')
-    quest = db.relationship('Quest', backref='user_progress')
-
 # models.py
-# models.py
+
 
 class PromoCode(db.Model):
     __tablename__ = 'promo_codes'
@@ -753,6 +882,16 @@ def auth_with_telegram():
         if not telegram_id:
             return jsonify({"error": "Invalid user data in initData"}), 400
 
+        # Extract language code from Telegram user data
+        user_language_code = user_data.get('language_code', 'en')
+        
+        # Validate and normalize language code
+        valid_language_codes = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ar', 'hi', 'tr']
+        if user_language_code not in valid_language_codes:
+            user_language_code = 'en'  # Default to English if invalid
+        
+        print(f"🌐 User language from Telegram: {user_language_code}")
+
         referred_by_id = None
         
         # FIRST: Check for start parameter from frontend (most reliable - from Telegram WebApp SDK)
@@ -806,6 +945,7 @@ def auth_with_telegram():
 
         # Debug output
         print(f"👤 User ID: {telegram_id}")
+        print(f"🌐 User Language: {user_language_code}")
         print(f"📋 Start param from frontend: {start_param_from_frontend}")
         print(f"🎯 Referred by ID: {referred_by_id}")
 
@@ -830,11 +970,16 @@ def auth_with_telegram():
         user = User.query.get(telegram_id)
         
         if user:
-            # Existing user - update name if it changed
+            # Existing user - update name and language if changed
             new_name = user_data.get('username') or f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or "Anonymous"
             if user.name != new_name:
                 user.name = new_name
                 print(f"📝 Updated user name: {user.name}")
+            
+            # Update language if different
+            if user.language_code != user_language_code:
+                user.language_code = user_language_code
+                print(f"🌐 Updated user language: {user.language_code}")
             
             # Only set referral if user doesn't have one already and referral is valid
             if not user.referred_by and referred_by_id and referred_by_id != user.id:
@@ -849,6 +994,7 @@ def auth_with_telegram():
                     name=user_data.get('username') or 
                          f"{user_data.get('first_name', '')} {user_data.get('last_name', '')}".strip() or 
                          "Anonymous",
+                    language_code=user_language_code,  # Set language from Telegram
                     coins=0,
                     ton=0.0,
                     referral_earnings=0,
@@ -872,7 +1018,7 @@ def auth_with_telegram():
                 )
                 db.session.add(user)
                 db.session.flush()  # Test if we can add without commit
-                print(f"✅ Created new user: {telegram_id}, referred by: {referred_by_id}")
+                print(f"✅ Created new user: {telegram_id}, language: {user_language_code}, referred by: {referred_by_id}")
                 
             except IntegrityError:
                 # Race condition: user was already created by another request
@@ -936,6 +1082,7 @@ def auth_with_telegram():
         user_dict['is_new_user'] = is_new_user
 
         print(f"✅ Authentication successful for user: {user.name} (ID: {user.id})")
+        print(f"🌐 User language: {user.language_code}")
         print(f"🆕 New user: {is_new_user}")
         print(f"🎯 Referred by: {referred_by_id}")
 
@@ -970,7 +1117,6 @@ def auth_with_telegram():
         return jsonify({"error": "Authentication failed"}), 500
 
 
-
 @app.route('/my-campaigns', methods=['GET'])
 @jwt_required  # Use this or  depending on your needs
 def get_my_created_campaigns():
@@ -997,12 +1143,51 @@ def get_my_created_campaigns():
 
 
 
+# @app.route('/usercampaigns/unclaimed', methods=['GET'])
+# @jwt_required
+# def get_my_unclaimed_created_campaigns():
+#     """Return campaigns created by the current user that they haven't yet claimed."""
+#     try:
+#         current_user_id = current_user().id
+
+#         # Get IDs of campaigns this user has already completed
+#         completed_records = db.session.execute(
+#             user_task_completion.select().where(
+#                 (user_task_completion.c.user_id == current_user_id) &
+#                 (user_task_completion.c.completed_at.isnot(None))
+#             )
+#         ).all()
+#         completed_campaign_ids = [record.campaign_id for record in completed_records]
+
+#         # Query campaigns created by this user that are NOT completed by them
+#         user_campaigns = UserCampaign.query.filter(
+#             (UserCampaign.creator_id == current_user_id) &
+#             (~UserCampaign.id.in_(completed_campaign_ids))
+#         ).order_by(UserCampaign.id).all()
+
+#         return jsonify([c.to_dict() for c in user_campaigns]), 200
+
+#     except Exception as e:
+#         print(f"Error fetching my unclaimed campaigns: {e}")
+#         # fallback
+#         user_campaigns = UserCampaign.query.filter_by(
+#             creator_id=current_user().id
+#         ).order_by(UserCampaign.id).all()
+#         return jsonify([c.to_dict() for c in user_campaigns]), 200
+
+
+
+
 @app.route('/usercampaigns/unclaimed', methods=['GET'])
 @jwt_required
 def get_my_unclaimed_created_campaigns():
-    """Return campaigns created by the current user that they haven't yet claimed."""
+    """Return campaigns created by the current user that they haven't yet claimed, filtered by user's language."""
     try:
         current_user_id = current_user().id
+        
+        # Get the current user's language preference
+        current_user_obj = User.query.get(current_user_id)
+        user_language = current_user_obj.language_code if current_user_obj else 'en'
 
         # Get IDs of campaigns this user has already completed
         completed_records = db.session.execute(
@@ -1014,21 +1199,40 @@ def get_my_unclaimed_created_campaigns():
         completed_campaign_ids = [record.campaign_id for record in completed_records]
 
         # Query campaigns created by this user that are NOT completed by them
+        # AND have the user's language in their languages list (or languages is empty/null)
         user_campaigns = UserCampaign.query.filter(
             (UserCampaign.creator_id == current_user_id) &
             (~UserCampaign.id.in_(completed_campaign_ids))
-        ).order_by(UserCampaign.id).all()
+        ).all()
 
-        return jsonify([c.to_dict() for c in user_campaigns]), 200
+        # Filter campaigns by language - only include campaigns that:
+        # 1. Have no languages specified (empty list/null) OR
+        # 2. Include the user's language in their languages list
+        filtered_campaigns = []
+        for campaign in user_campaigns:
+            # If campaign has no language restrictions, include it
+            if not campaign.langs or campaign.langs == []:
+                filtered_campaigns.append(campaign)
+            # If campaign has languages list, check if user's language is included
+            elif user_language in campaign.langs:
+                filtered_campaigns.append(campaign)
+        
+        # Sort by ID
+        filtered_campaigns.sort(key=lambda x: x.id)
+
+        return jsonify([c.to_dict() for c in filtered_campaigns]), 200
 
     except Exception as e:
         print(f"Error fetching my unclaimed campaigns: {e}")
-        # fallback
-        user_campaigns = UserCampaign.query.filter_by(
-            creator_id=current_user().id
-        ).order_by(UserCampaign.id).all()
-        return jsonify([c.to_dict() for c in user_campaigns]), 200
-
+        # Fallback: try to return at least some campaigns without language filtering
+        try:
+            user_campaigns = UserCampaign.query.filter_by(
+                creator_id=current_user().id
+            ).order_by(UserCampaign.id).all()
+            return jsonify([c.to_dict() for c in user_campaigns]), 200
+        except Exception as fallback_error:
+            print(f"Fallback also failed: {fallback_error}")
+            return jsonify([]), 200
 
 
 @app.route('/campaigns', methods=['GET'])
@@ -1067,7 +1271,6 @@ def get_all_uncompleted_campaigns():
         # fallback → return everything
         campaigns = UserCampaign.query.order_by(UserCampaign.id).all()
         return jsonify([c.to_dict() for c in campaigns]), 200
-
 
 
 
@@ -1353,9 +1556,7 @@ def claim_task():
             return jsonify({"success": False, "message": "Invalid partner campaign"}), 400
         
         # Extract game ID from link
-        # game_id = extract_game_id_from_link(campaign.link)
         game_id = campaign.link
-
         
         # Check user's current level for this game
         user_progress = UserGameProgress.query.filter_by(
@@ -1396,11 +1597,21 @@ def claim_task():
     CONVERSION_RATE = 1000000
     reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
     user.coins += reward
-    user.tasks_completed_today_for_spin+=1
-    user.spins+=1
+    user.tasks_completed_today_for_spin += 1
+    user.spins += 1
+
+    # Update user's task completion counters based on task category
+    if campaign.category == TaskCategory.GAME:
+        user.total_game_tasks_completed += 1
+    elif campaign.category == TaskCategory.SOCIAL:
+        user.total_social_tasks_completed += 1
+    elif campaign.category == TaskCategory.PARTNER:
+        user.total_partner_tasks_completed += 1
+
+    # Update quest progress for all relevant quests
+    update_quest_progress(user.id, campaign.category)
 
     award_referral_earnings(user.id, reward)
-
 
     db.session.commit()
     db.session.refresh(user)
@@ -1412,7 +1623,59 @@ def claim_task():
         "reward": reward
     })
 
-
+def update_quest_progress(user_id: int, task_category: str):
+    """Update quest progress based on completed task category"""
+    # Map task category to quest type
+    quest_type_map = {
+        TaskCategory.GAME: 'game',
+        TaskCategory.SOCIAL: 'social', 
+        TaskCategory.PARTNER: 'partner'
+    }
+    
+    quest_type = quest_type_map.get(task_category)
+    if not quest_type:
+        return  # Unknown category, no quests to update
+    
+    # Get all active quests of this type
+    quests = Quest.query.filter_by(quest_type=quest_type, is_active=True).all()
+    
+    for quest in quests:
+        # Get or create user progress record
+        progress = UserQuestProgress.query.filter_by(
+            user_id=user_id, 
+            quest_id=quest.id
+        ).first()
+        
+        if not progress:
+            # Calculate current progress from user stats
+            user = User.query.get(user_id)
+            current_progress = 0
+            
+            if quest_type == 'game':
+                current_progress = user.total_game_tasks_completed
+            elif quest_type == 'social':
+                current_progress = user.total_social_tasks_completed
+            elif quest_type == 'partner':
+                current_progress = user.total_partner_tasks_completed
+            
+            progress = UserQuestProgress(
+                user_id=user_id,
+                quest_id=quest.id,
+                current_progress=current_progress
+            )
+            db.session.add(progress)
+        else:
+            # Update progress based on quest type
+            if quest_type == 'game':
+                progress.current_progress = User.query.get(user_id).total_game_tasks_completed
+            elif quest_type == 'social':
+                progress.current_progress = User.query.get(user_id).total_social_tasks_completed
+            elif quest_type == 'partner':
+                progress.current_progress = User.query.get(user_id).total_partner_tasks_completed
+        
+        # Update completion status
+        progress.is_completed = progress.current_progress >= quest.total_progress
+        progress.last_updated = datetime.utcnow()
 
 def extract_game_id_from_link(link: str) -> str:
     """Extract game/bot ID from various link formats"""
@@ -3466,6 +3729,8 @@ def update_withdrawal_transaction():
 
 
 
+
+
 # app.py - Add these endpoints
 # app.py
 @app.route('/api/transactions/withdrawals', methods=['GET'])
@@ -3544,3 +3809,198 @@ def get_withdrawal_transactions():
             'limit': 10,
             'totalPages': 0
         }), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.route('/api/quests', methods=['GET'])
+def get_user_quests():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Get all active quests
+    quests = Quest.query.filter_by(is_active=True).all()
+    
+    user_quests = []
+    for quest in quests:
+        # Get user's progress for this quest
+        progress = UserQuestProgress.query.filter_by(
+            user_id=user_id, 
+            quest_id=quest.id
+        ).first()
+        
+        # Calculate current progress based on quest type
+        current_progress = 0
+        if progress:
+            current_progress = progress.current_progress
+        else:
+            # Auto-calculate progress from user stats
+            current_progress = calculate_quest_progress(quest, user)
+            
+            # Create progress record if it doesn't exist
+            if not progress:
+                progress = UserQuestProgress(
+                    user_id=user_id,
+                    quest_id=quest.id,
+                    current_progress=current_progress
+                )
+                db.session.add(progress)
+        
+        # Update completion status
+        is_completed = current_progress >= quest.total_progress
+        if progress.is_completed != is_completed:
+            progress.is_completed = is_completed
+            progress.last_updated = datetime.utcnow()
+        
+        user_quests.append({
+            'id': quest.id,
+            'title': quest.title,
+            'icon': quest.icon,
+            'reward': quest.reward,
+            'currentProgress': current_progress,
+            'totalProgress': quest.total_progress,
+            'isCompleted': is_completed,
+            'isClaimed': ClaimedQuest.query.filter_by(
+                user_id=user_id, 
+                quest_id=quest.id
+            ).first() is not None
+        })
+    
+    db.session.commit()
+    return jsonify(user_quests)
+
+def calculate_quest_progress(quest, user):
+    """Calculate progress based on quest type and user stats"""
+    if quest.quest_type == 'game':
+        return user.total_game_tasks_completed
+    elif quest.quest_type == 'social':
+        return user.total_social_tasks_completed
+    elif quest.quest_type == 'partner':
+        return user.total_partner_tasks_completed
+    elif quest.quest_type == 'invite':
+        return user.total_friends_invited
+    return 0
+
+@app.route('/api/quests/<quest_id>/claim', methods=['POST'])
+def claim_quest_reward(quest_id):
+    user_id = request.json.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'User ID is required'}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    quest = Quest.query.get(quest_id)
+    if not quest:
+        return jsonify({'error': 'Quest not found'}), 404
+    
+    # Check if already claimed
+    if ClaimedQuest.query.filter_by(user_id=user_id, quest_id=quest_id).first():
+        return jsonify({'error': 'Quest already claimed'}), 400
+    
+    # Check progress
+    progress = UserQuestProgress.query.filter_by(user_id=user_id, quest_id=quest_id).first()
+    if not progress or progress.current_progress < quest.total_progress:
+        return jsonify({'error': 'Quest not completed'}), 400
+    
+    # Award reward
+    user.coins += quest.reward
+    
+    # Record claim
+    claimed_quest = ClaimedQuest(
+        user_id=user_id,
+        quest_id=quest_id,
+        reward_received=quest.reward
+    )
+    db.session.add(claimed_quest)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'coins_awarded': quest.reward,
+        'new_balance': user.coins
+    })
+
+# Admin routes for quest management
+@app.route('/admin/quests', methods=['GET'])
+def get_all_quests():
+    quests = Quest.query.all()
+    return jsonify([{
+        'id': q.id,
+        'title': q.title,
+        'icon': q.icon,
+        'reward': q.reward,
+        'total_progress': q.total_progress,
+        'quest_type': q.quest_type,
+        'is_active': q.is_active,
+        'created_at': q.created_at.isoformat(),
+        'updated_at': q.updated_at.isoformat()
+    } for q in quests])
+
+@app.route('/admin/quests', methods=['POST'])
+def create_quest():
+    data = request.json
+    quest = Quest(
+        id=data['id'],
+        title=data['title'],
+        icon=data['icon'],
+        reward=data['reward'],
+        total_progress=data['total_progress'],
+        quest_type=data['quest_type'],
+        is_active=data.get('is_active', True)
+    )
+    db.session.add(quest)
+    db.session.commit()
+    return jsonify({'success': True, 'quest': quest.id})
+
+@app.route('/admin/quests/<quest_id>', methods=['PUT'])
+def update_quest(quest_id):
+    quest = Quest.query.get(quest_id)
+    if not quest:
+        return jsonify({'error': 'Quest not found'}), 404
+    
+    data = request.json
+    quest.title = data.get('title', quest.title)
+    quest.icon = data.get('icon', quest.icon)
+    quest.reward = data.get('reward', quest.reward)
+    quest.total_progress = data.get('total_progress', quest.total_progress)
+    quest.quest_type = data.get('quest_type', quest.quest_type)
+    quest.is_active = data.get('is_active', quest.is_active)
+    quest.updated_at = datetime.utcnow()
+    
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/quests/<quest_id>', methods=['DELETE'])
+def delete_quest(quest_id):
+    quest = Quest.query.get(quest_id)
+    if not quest:
+        return jsonify({'error': 'Quest not found'}), 404
+    
+    db.session.delete(quest)
+    db.session.commit()
+    return jsonify({'success': True})

@@ -27,6 +27,7 @@ import UsersPage from './pages/admin/UsersPage';
 import PromoCodesPage from './pages/admin/PromoCodesPage';
 import TasksPage from './pages/admin/TasksPage';
 import SettingsPage from './pages/admin/SettingsPage';
+import QuestAdmin from './pages/admin/QuestsPage';
 
 
 declare global {
@@ -229,6 +230,7 @@ const App: React.FC = () => {
                         <Route path="promocodes" element={<PromoCodesPage />} />
                         <Route path="tasks" element={<TasksPage />} />
                         <Route path="settings" element={<SettingsPage />} />
+                        <Route path="questadmin" element={<QuestAdmin />} />
                         <Route index element={<Navigate to="dashboard" />} />
                     </Route>
                 </Route>
@@ -242,7 +244,7 @@ const App: React.FC = () => {
 
                 <Route element={<Layout user={user} />}>
                     <Route path="/" element={<EarningsPage setUser={handleSetUser} user={user} />} />
-                    <Route path="/quests" element={<QuestsPage />} />
+                    <Route path="/quests" element={<QuestsPage user={user} setUser={handleSetUser} />} />
                     <Route path="/game" element={<GamePage />} />
                     <Route path="/friends" element={<FriendsPage user={user} setUser={handleSetUser} />} />
                     <Route path="/withdraw" element={<WithdrawPage user={user} setUser={handleSetUser} />} />

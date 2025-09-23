@@ -94,7 +94,24 @@ export interface TransactionsFilters {
   endDate?: string;
 }
 
+// types.ts
+export interface Quest {
+  id: string;
+  title: string;
+  icon: string;
+  reward: number;
+  totalProgress: number;
+  currentProgress: number;
+  isCompleted: boolean;
+  isClaimed: boolean;
+  canClaim: boolean;
+}
 
+export interface QuestResponse {
+  success: boolean;
+  quests: Quest[];
+  error?: string;
+}
 
 export interface Transaction {
   id: number;

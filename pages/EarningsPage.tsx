@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { DailyTask, GameTask, User, PartnerCampaign, UserCampaign } from '../types';
 import { 
-  fetchDailyTasksAPI,
+
   claimDailyTask,
   fetchAllCampaignsAPI,
   startTask,

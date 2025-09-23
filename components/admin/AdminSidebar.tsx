@@ -6,10 +6,10 @@ const navItems = [
     { path: 'dashboard', label: 'Dashboard', icon: ICONS.dashboard },
     { path: 'users', label: 'Users', icon: ICONS.users },
     { path: 'tasks', label: 'Add Task', icon: ICONS.tasks },
+    { path: 'questadmin', label: 'Quests Management', icon: '⚡' }, // Added Quests Management
     { path: 'promocodes', label: 'Promo Codes', icon: ICONS.promoCode },
     { path: 'settings', label: 'Settings', icon: ICONS.settings },
 ];
-
 interface AdminSidebarProps {
     onLogout: () => void;
 }

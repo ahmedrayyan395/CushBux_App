@@ -1,4 +1,4 @@
-import type { User, DailyTask, GameTask, Quest, Transaction, Friend, UserCampaign, PartnerCampaign, PromoCode, AdNetwork, AdminUser, Task } from '../types';
+import type { User, DailyTask, GameTask, Quest, Transaction, Friend, UserCampaign, PartnerCampaign, PromoCode, AdNetwork, AdminUser, Task, QuestResponse } from '../types';
 import { INITIAL_USER, DAILY_TASKS, GAME_TASKS, QUESTS, TRANSACTIONS, CONVERSION_RATE, MOCK_FRIENDS, MOCK_USER_CAMPAIGNS, MOCK_PROMO_CODES, SPIN_WHEEL_PRIZES, SPIN_STORE_PACKAGES, MOCK_ADMINS, generateMockUsers, ICONS } from '../constants';
 import { get } from 'http';
 import type {  TransactionsFilters, TransactionsResponse } from '../types';
@@ -429,7 +429,7 @@ export const loginWithTelegram = async (telegramInitData: string): Promise<User>
 
 // Campaign API functions - FIXED to use apiFetch correctly
 export const fetchAllCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
-  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/campaigns?user_id=${userId}`, {
+  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/usercampaigns/unclaimed?user_id=${userId}`, {
     method: 'GET',
   });
 };
@@ -1409,16 +1409,45 @@ export const fetchWithdrawalTransactions = async (
 
 
 
+export const fetchQuests = async (userId: number): Promise<Quest[]> => {
+  return apiFetch<Quest[]>(`/api/quests?user_id=${userId}`);
+};
 
+export const claimQuestReward = async (questId: string, userId: number): Promise<{ 
+  success: boolean; 
+  coins_awarded: number; 
+  new_balance: number 
+}> => {
+  return apiFetch(`/api/quests/${questId}/claim`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  });
+};
 
+// Admin quest functions
+export const fetchAllQuests = async (): Promise<Quest[]> => {
+  return apiFetch<Quest[]>('/admin/quests');
+};
 
+export const createQuest = async (questData: Partial<Quest>): Promise<{ success: boolean; quest: string }> => {
+  return apiFetch('/admin/quests', {
+    method: 'POST',
+    body: JSON.stringify(questData),
+  });
+};
 
+export const updateQuest = async (questId: string, questData: Partial<Quest>): Promise<{ success: boolean }> => {
+  return apiFetch(`/admin/quests/${questId}`, {
+    method: 'PUT',
+    body: JSON.stringify(questData),
+  });
+};
 
-
-
-
-
-
+export const deleteQuest = async (questId: string): Promise<{ success: boolean }> => {
+  return apiFetch(`/admin/quests/${questId}`, {
+    method: 'DELETE',
+  });
+};
 
 
 // export const depositAdCredit = async (
@@ -1491,10 +1520,64 @@ export const fetchWithdrawalTransactions = async (
 //   }));
 // };
 
-export const fetchQuests = async (): Promise<Quest[]> => {
-  await simulateDelay();
-  return [...quests];
-};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// export const fetchQuests = async (): Promise<Quest[]> => {
+//   await simulateDelay();
+//   return [...quests];
+// };
 
 export const fetchTransactions = async (): Promise<Transaction[]> => {
   await simulateDelay(800);

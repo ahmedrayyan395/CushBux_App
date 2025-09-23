@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: b350e21766dc
+Revision ID: 77303a7c9eb5
 Revises: 
-Create Date: 2025-09-22 20:01:36.240211
+Create Date: 2025-09-23 16:17:42.366278
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b350e21766dc'
+revision = '77303a7c9eb5'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -44,11 +44,15 @@ def upgrade():
     sa.PrimaryKeyConstraint('code')
     )
     op.create_table('quests',
-    sa.Column('id', sa.String(), nullable=False),
-    sa.Column('icon_name', sa.String(), nullable=False),
-    sa.Column('title', sa.String(), nullable=False),
-    sa.Column('reward', sa.Integer(), nullable=False, comment='Reward in coins'),
-    sa.Column('total_progress', sa.Integer(), nullable=False, comment='The goal the user must reach'),
+    sa.Column('id', sa.String(length=50), nullable=False),
+    sa.Column('title', sa.String(length=255), nullable=False),
+    sa.Column('icon', sa.String(length=50), nullable=False),
+    sa.Column('reward', sa.BigInteger(), nullable=False),
+    sa.Column('total_progress', sa.Integer(), nullable=False),
+    sa.Column('quest_type', sa.String(length=20), nullable=False),
+    sa.Column('is_active', sa.Boolean(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('settings',
@@ -67,14 +71,30 @@ def upgrade():
     sa.Column('ads_watched_today', sa.Integer(), nullable=False),
     sa.Column('tasks_completed_today_for_spin', sa.Integer(), nullable=False),
     sa.Column('friends_invited_today_for_spin', sa.Integer(), nullable=False),
+    sa.Column('language_code', sa.String(length=10), nullable=False),
     sa.Column('space_defender_progress', sa.JSON(), nullable=False),
     sa.Column('street_racing_progress', sa.JSON(), nullable=False),
+    sa.Column('total_game_tasks_completed', sa.Integer(), nullable=False),
+    sa.Column('total_social_tasks_completed', sa.Integer(), nullable=False),
+    sa.Column('total_partner_tasks_completed', sa.Integer(), nullable=False),
+    sa.Column('total_friends_invited', sa.Integer(), nullable=False),
     sa.Column('banned', sa.Boolean(), nullable=True),
     sa.Column('referred_by', sa.BigInteger(), nullable=True),
     sa.Column('referral_count', sa.Integer(), nullable=True),
     sa.Column('total_referral_earnings', sa.BigInteger(), nullable=True),
     sa.ForeignKeyConstraint(['referred_by'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('claimed_quests',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.BigInteger(), nullable=False),
+    sa.Column('quest_id', sa.String(length=50), nullable=False),
+    sa.Column('claimed_at', sa.DateTime(), nullable=True),
+    sa.Column('reward_received', sa.BigInteger(), nullable=False),
+    sa.ForeignKeyConstraint(['quest_id'], ['quests.id'], ),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'quest_id', name='_user_claimed_quest_uc')
     )
     op.create_table('daily_tasks',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -161,12 +181,16 @@ def upgrade():
         batch_op.create_index('idx_user_game', ['user_id', 'game_id'], unique=False)
 
     op.create_table('user_quest_progress',
+    sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
-    sa.Column('quest_id', sa.String(), nullable=False),
-    sa.Column('current_progress', sa.Integer(), nullable=True),
+    sa.Column('quest_id', sa.String(length=50), nullable=False),
+    sa.Column('current_progress', sa.Integer(), nullable=False),
+    sa.Column('is_completed', sa.Boolean(), nullable=True),
+    sa.Column('last_updated', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['quest_id'], ['quests.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
-    sa.PrimaryKeyConstraint('user_id', 'quest_id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'quest_id', name='_user_quest_uc')
     )
     op.create_table('level_completions',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -224,6 +248,7 @@ def downgrade():
     op.drop_table('referrals')
     op.drop_table('friendships')
     op.drop_table('daily_tasks')
+    op.drop_table('claimed_quests')
     op.drop_table('users')
     op.drop_table('settings')
     op.drop_table('quests')
