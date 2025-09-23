@@ -1042,6 +1042,7 @@ def auth_with_telegram():
                 
                 # AWARD 1 SPIN TO REFERRER FOR SUCCESSFUL REFERRAL
                 referrer.spins += 1
+                user.total_friends_invited+=1
                 
                 # INCREASE FRIEND INVITATION COUNT FOR TODAY
                 referrer.friends_invited_today_for_spin += 1
@@ -3875,19 +3876,25 @@ def get_user_quests():
             progress.is_completed = is_completed
             progress.last_updated = datetime.utcnow()
         
-        user_quests.append({
-            'id': quest.id,
-            'title': quest.title,
-            'icon': quest.icon,
-            'reward': quest.reward,
-            'currentProgress': current_progress,
-            'totalProgress': quest.total_progress,
-            'isCompleted': is_completed,
-            'isClaimed': ClaimedQuest.query.filter_by(
-                user_id=user_id, 
-                quest_id=quest.id
-            ).first() is not None
-        })
+        # Check if claimed
+        is_claimed = ClaimedQuest.query.filter_by(
+            user_id=user_id, 
+            quest_id=quest.id
+        ).first() is not None
+        
+        # Exclude quests that are both completed AND claimed
+        # This shows: uncompleted quests + completed but unclaimed quests
+        if not (is_completed and is_claimed):
+            user_quests.append({
+                'id': quest.id,
+                'title': quest.title,
+                'icon': quest.icon,
+                'reward': quest.reward,
+                'currentProgress': current_progress,
+                'totalProgress': quest.total_progress,
+                'isCompleted': is_completed,
+                'isClaimed': is_claimed
+            })
     
     db.session.commit()
     return jsonify(user_quests)
@@ -3997,10 +4004,25 @@ def update_quest(quest_id):
 
 @app.route('/admin/quests/<quest_id>', methods=['DELETE'])
 def delete_quest(quest_id):
-    quest = Quest.query.get(quest_id)
-    if not quest:
-        return jsonify({'error': 'Quest not found'}), 404
-    
-    db.session.delete(quest)
-    db.session.commit()
-    return jsonify({'success': True})
+    try:
+        quest = Quest.query.get(quest_id)
+        if not quest:
+            return jsonify({'error': 'Quest not found'}), 404
+        
+        # First, delete all related records
+        # Delete UserQuestProgress records
+        UserQuestProgress.query.filter_by(quest_id=quest_id).delete()
+        
+        # Delete ClaimedQuest records
+        ClaimedQuest.query.filter_by(quest_id=quest_id).delete()
+        
+        # Now delete the quest
+        db.session.delete(quest)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error deleting quest {quest_id}: {e}")
+        return jsonify({'error': 'Failed to delete quest'}), 500
