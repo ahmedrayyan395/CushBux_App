@@ -4027,3 +4027,85 @@ def get_dashboard_stats():
             'success': False,
             'message': 'Failed to fetch dashboard statistics'
         }), 500
+
+
+
+
+
+
+
+
+
+
+
+@app.route('/campaign/reactivate', methods=['POST'])
+@jwt_required
+def reactivate_campaign():
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        campaign_id = data.get('campaign_id')
+        
+        if not user_id or not campaign_id:
+            return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+        
+        user = User.query.get(user_id)
+        
+        # Check if user has this campaign in their completions
+        campaign_completion = db.session.query(user_task_completion).filter_by(
+            user_id=user_id, 
+            campaign_id=campaign_id
+        ).first()
+        
+        if not campaign_completion:
+            return jsonify({'success': False, 'message': 'Campaign not found for this user'}), 404
+        
+        # Get the campaign details
+        campaign = UserCampaign.query.get(campaign_id)
+        if not campaign:
+            return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+        
+        # # Check if campaign is completed (based on completion status)
+        # if campaign_completion.completed_at is not None:
+        #     return jsonify({'success': False, 'message': 'Only completed campaigns can be reactivated'}), 400
+        
+        # Calculate reactivation cost (same as original cost)
+        reactivation_cost = campaign.cost
+        
+        if user.ad_credit < reactivation_cost:
+            return jsonify({
+                'success': False, 
+                'message': f'Insufficient funds. Need {reactivation_cost} TON, but only have {user.ad_credit} TON'
+            }), 400
+        
+        # Deduct from user's ad credit
+        user.ad_credit -= reactivation_cost
+        campaign.completions=0
+        
+        # Reset the completion status
+        db.session.execute(
+            user_task_completion.update().where(
+                (user_task_completion.c.user_id == user_id) & 
+                (user_task_completion.c.campaign_id == campaign_id)
+            ).values(
+                completed_at=None,
+                started_at=func.now()
+            )
+        )
+        
+        # Update campaign cost (add to total spent by this user)
+        # Since cost is stored per campaign, we might need a different approach
+        # Let's track user's total spend separately or update the campaign cost
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'user': user.to_dict(),
+            'message': 'Campaign reactivated successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+   

@@ -441,6 +441,13 @@ export const fetchUserCampaignsAPI = async (userId: number): Promise<(UserCampai
   });
 };
 
+export const fetchUserCampaignsPartnerAPI = async (userId: number): Promise<PartnerCampaign[]> => {
+  return apiFetch<PartnerCampaign[]>(`/my-partnercampaigns?user_id=${userId}&type=partner`, {
+    method: 'GET',
+  });
+};
+
+
 
 // export const fetchMyCreatedCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
 //   return apiFetch<(UserCampaign | PartnerCampaign)[]>('/my-campaigns', {
@@ -1344,6 +1351,7 @@ export const executeWithdrawal = async (
   });
 };
 
+
 export const updateWithdrawalTransaction = async (
   transactionId: number,
   transactionHash: string
@@ -1524,12 +1532,95 @@ export const deleteQuest = async (questId: string): Promise<{ success: boolean }
 
 
 
+// services/api.ts
+export const fetchDashboardStats = async (): Promise<{
+  totalUsers: number;
+  totalCoins: number;
+  totalWithdrawals: number;
+  tasksCompleted: number;
+}> => {
+  try {
+    const data = await apiFetch<{
+      success: boolean;
+      stats: {
+        totalUsers: number;
+        totalCoins: number;
+        totalWithdrawals: number;
+        tasksCompleted: number;
+      };
+      message?: string;
+    }>('/api/admin/dashboard/stats', {
+      method: 'GET',
+    });
+
+    if (data.success) {
+      return data.stats;
+    } else {
+      throw new Error(data.message || 'Failed to fetch dashboard stats');
+    }
+  } catch (error: any) {
+    console.error('Error fetching dashboard stats:', error);
+    
+    // Provide more specific error messages based on the error structure from apiFetch
+    if (error.isHtml) {
+      throw new Error('Server error: Invalid response format');
+    }
+    
+    if (error.status === 401) {
+      throw new Error('Authentication required: Please log in again');
+    }
+    
+    if (error.status === 403) {
+      throw new Error('Access denied: Admin privileges required');
+    }
+    
+    if (error.status === 404) {
+      throw new Error('Dashboard endpoint not found');
+    }
+    
+    if (error.data?.message) {
+      throw new Error(error.data.message);
+    }
+    
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      throw new Error('Network error: Unable to connect to server');
+    }
+    
+    throw new Error(error.message || 'Failed to fetch dashboard statistics');
+  }
+};
 
 
 
 
 
+export const reactivateCampaignAPI = async (
+  userId: number,
+  campaignId: number
+): Promise<{ success: boolean; user: User; message?: string }> => {
+  try {
+    const data = await apiFetch<{ success: boolean; user: User; message?: string }>('/campaign/reactivate', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        campaign_id: campaignId
+      })
+    });
 
+    if (!data.success) {
+      throw new Error(data.message || 'Reactivate failed');
+    }
+
+    return { success: true, user: data.user };
+  } catch (error: any) {
+    console.error('Reactivate error:', error);
+    return { 
+      success: false, 
+      user: null,
+      message: error.data?.message || error.message || 'Reactivate failed'
+    };
+  }
+};
 
 
 
@@ -1845,14 +1936,14 @@ export const adminLogin = async (username: string, password: string): Promise<{ 
     return { success: false };
 };
 
-export const fetchDashboardStats = async () => {
-    await simulateDelay();
-    const totalUsers = users.length;
-    const totalCoins = users.reduce((acc, u) => acc + u.coins, 0);
-    const totalWithdrawals = transactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
-    const tasksCompleted = dailyTasks.filter(t => t.claimed).length;
-    return { totalUsers, totalCoins, totalWithdrawals, tasksCompleted };
-};
+// export const fetchDashboardStats = async () => {
+//     await simulateDelay();
+//     const totalUsers = users.length;
+//     const totalCoins = users.reduce((acc, u) => acc + u.coins, 0);
+//     const totalWithdrawals = transactions.filter(t => t.type === 'Withdrawal').reduce((acc, t) => acc + t.amount, 0);
+//     const tasksCompleted = dailyTasks.filter(t => t.claimed).length;
+//     return { totalUsers, totalCoins, totalWithdrawals, tasksCompleted };
+// };
 
 // export const fetchAllUsers = async (): Promise<User[]> => {
 //     await simulateDelay();

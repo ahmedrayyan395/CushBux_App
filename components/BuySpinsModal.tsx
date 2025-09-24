@@ -35,7 +35,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
 
         try {
             if (paymentMethod === 'TON') {
-                const userTonBalance = user.ton ? Number(user.ton) : 0;
+                const userTonBalance = user.ad_balance ? Number(user.ad_balance) : 0;
 
                 if (userTonBalance >= selectedPackage.costTon) {
                     // ✅ Use in-app TON balance - update user immediately
@@ -63,7 +63,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                     const optimisticUser = {
                         ...user,
                         spins: (user.spins || 0) + selectedPackage.spins,
-                        ton: user.ton ? (Number(user.ton) - selectedPackage.costTon).toString() : '0'
+                        ton: user.ad_balance ? (Number(user.ad_balance) - selectedPackage.costTon).toString() : '0'
                     };
                     setUser(optimisticUser as User);
 
@@ -163,7 +163,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
             const canAfford = (user?.coins ?? 0) >= costInCoins;
             return { canAfford, costDisplay: formatCoinCost(costInCoins) };
         } else {
-            const userTonBalance = user?.ton ? Number(user.ton) : 0;
+            const userTonBalance = user?.ad_balance ? Number(user.ad_balance) : 0;
             const canAffordWithInAppTon = userTonBalance >= pkg.costTon;
             return { 
                 canAfford: canAffordWithInAppTon, 
@@ -201,7 +201,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                     <div className="flex justify-between items-center">
                         <span className="text-slate-300">Your TON:</span>
                         <span className="text-blue-400 font-bold">
-                            {user?.ton ? Number(user.ton).toFixed(3) : '0.000'} TON
+                            {user?.ad_balance ? Number(user.ad_balance).toFixed(3) : '0.000'} TON
                         </span>
                     </div>
                 </div>

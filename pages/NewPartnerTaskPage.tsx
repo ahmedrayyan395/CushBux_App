@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COMPLETION_TIERS } from '../constants';
 import type { CompletionTier, PartnerCampaign, User } from '../types';
-import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampaignAPI, fetchUserCampaignsAPI } from '../services/api';
+import { addPartnerTask, fetchPartnerCampaigns, depositAdCreditAPI, addUserCampaignAPI, fetchUserCampaignsPartnerAPI } from '../services/api';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 import ProgressBar from '../components/ProgressBar';
 
@@ -15,7 +15,7 @@ const MyPartnerTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUserCampaignsAPI(userid).then(data => {
+    fetchUserCampaignsPartnerAPI(userid).then(data => {
       setCampaigns(data);
       setLoading(false);
     });

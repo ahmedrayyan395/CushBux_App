@@ -2,23 +2,67 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COMPLETION_TIERS } from '../constants';
 import type { CompletionTier, UserCampaign, User } from '../types';
-import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI } from '../services/api';
+import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI, reactivateCampaignAPI } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 
 interface MyTasksComponentProps {
   userid: number;
+  user: User | null;
+  setUser: (user: User) => void;
+  onAddFunds: () => void;
+  onCampaignsUpdate: () => void;
 }
-const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
+
+const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid, user, setUser, onAddFunds, onCampaignsUpdate }) => {
   const [campaigns, setCampaigns] = useState<UserCampaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reactivating, setReactivating] = useState<number | null>(null);
 
   useEffect(() => {
-      fetchUserCampaignsAPI(userid).then(data => {
+    loadCampaigns();
+  }, [userid]);
+
+  const loadCampaigns = async () => {
+    try {
+      const data = await fetchUserCampaignsAPI(userid);
       setCampaigns(data);
+    } catch (error) {
+      console.error('Error loading campaigns:', error);
+    } finally {
       setLoading(false);
-    });
-  }, []);
+    }
+  };
+
+  const handleReactivate = async (campaignId: number) => {
+    if (!user) return;
+    
+    setReactivating(campaignId);
+    try {
+      const result = await reactivateCampaignAPI(user.id, campaignId);
+      
+      if (result.success) {
+        setUser(result.user);
+        await loadCampaigns();
+        onCampaignsUpdate();
+        alert('Campaign reactivated successfully!');
+      } else {
+        if (result.message?.includes('insufficient funds')) {
+          const addFunds = confirm('Insufficient ad credit. Would you like to add funds?');
+          if (addFunds) {
+            onAddFunds();
+          }
+        } else {
+          alert(result.message || 'Failed to reactivate campaign');
+        }
+      }
+    } catch (error) {
+      console.error('Reactivate error:', error);
+      alert('An error occurred while reactivating the campaign');
+    } finally {
+      setReactivating(null);
+    }
+  };
 
   if (loading) {
     return <div className="text-center text-slate-400 py-10">Loading campaigns...</div>;
@@ -46,7 +90,9 @@ const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
                   </p>
                 )}
               </div>
-              <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>{campaign.status}</span>
+              <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusStyles[campaign.status]}`}>
+                {campaign.status}
+              </span>
             </div>
             <div>
               <ProgressBar current={campaign.completions} total={campaign.goal} />
@@ -56,8 +102,19 @@ const MyTasksComponent: React.FC<MyTasksComponentProps> = ({ userid }) => {
               </div>
             </div>
             <div className="flex space-x-2 pt-2">
-              <button className="w-full bg-slate-700 text-white font-semibold py-2 rounded-lg text-sm hover:bg-slate-600 transition-colors">Add Funds</button>
-              <button disabled={campaign.status !== 'Completed'} className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg text-sm hover:bg-green-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed">Re-activate</button>
+              <button 
+                onClick={onAddFunds}
+                className="w-full bg-slate-700 text-white font-semibold py-2 rounded-lg text-sm hover:bg-slate-600 transition-colors"
+              >
+                Add Funds
+              </button>
+              <button 
+              disabled={campaign.completions < campaign.goal}
+                onClick={() => handleReactivate(campaign.id)}
+                className="w-full bg-green-500 text-white font-semibold py-2 rounded-lg text-sm hover:bg-green-600 transition-colors disabled:bg-slate-600 disabled:cursor-not-allowed"
+              >
+                {reactivating === campaign.id ? 'Processing...' : 'Re-activate'}
+              </button>
             </div>
           </div>
         ))
@@ -288,7 +345,7 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
   
   // Form state
   const [taskLink, setTaskLink] = useState('');
-  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']); // Default to English
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['en']);
   const [checkSubscription, setCheckSubscription] = useState(false);
   const [selectedTier, setSelectedTier] = useState<CompletionTier | null>(COMPLETION_TIERS[0]);
   const [selectedCategory, setSelectedCategory] = useState<string>('Social');
@@ -309,61 +366,63 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
     }
   }, [selectedTier, checkSubscription, selectedCategory]);
   
-const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
+  const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
 
   const handleAddFunds = async () => {
-  if (!wallet) {
-    tonConnectUI.openModal();
-    return;
-  }
-
-  const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "1");
-  if (amountStr) {
-    const amount = parseFloat(amountStr);
-    if (!isNaN(amount) && amount > 0) {
-      try {
-        // Execute blockchain transaction
-        const transaction = {
-          validUntil: Math.floor(Date.now() / 1000) + 300,
-          messages: [
-            {
-              address: MERCHANT_WALLET_ADDRESS,
-              amount: Math.round(amount * 1e9).toString(), // Convert to nanoton
-            },
-          ],
-        };
-
-        // Show loading state
-        alert(`Please complete the ${amount} TON deposit in your wallet...`);
-
-        // Send transaction without waiting for it to complete
-        tonConnectUI.sendTransaction(transaction)
-          .then(async (resultBoc) => {
-            if (resultBoc?.boc) {
-              // Process successful transaction
-              const result = await depositAdCreditAPI(user.id, amount, resultBoc.boc);
-
-              if (result.success) {
-                setUser(result.user);
-                alert("Deposit successful! Your balance has been updated.");
-              } else {
-                alert("Deposit failed: " + (result.message || "Unknown error"));
-              }
-            }
-          })
-          .catch((error) => {
-            console.error('Transaction error:', error);
-            alert("Transaction failed or was cancelled: " + error.message);
-          });
-      } catch (error) {
-        console.error('Deposit initiation error:', error);
-        alert("Failed to initiate deposit");
-      }
-    } else {
-      alert("Invalid amount entered.");
+    if (!wallet) {
+      tonConnectUI.openModal();
+      return;
     }
-  }
-};
+
+    const amountStr = prompt("How much TON would you like to deposit to your ad balance?", "1");
+    if (amountStr) {
+      const amount = parseFloat(amountStr);
+      if (!isNaN(amount) && amount > 0) {
+        try {
+          const transaction = {
+            validUntil: Math.floor(Date.now() / 1000) + 300,
+            messages: [
+              {
+                address: MERCHANT_WALLET_ADDRESS,
+                amount: Math.round(amount * 1e9).toString(),
+              },
+            ],
+          };
+
+          alert(`Please complete the ${amount} TON deposit in your wallet...`);
+
+          tonConnectUI.sendTransaction(transaction)
+            .then(async (resultBoc) => {
+              if (resultBoc?.boc) {
+                const result = await depositAdCreditAPI(user.id, amount, resultBoc.boc);
+
+                if (result.success) {
+                  setUser(result.user);
+                  alert("Deposit successful! Your balance has been updated.");
+                  // Refresh campaigns to reflect any changes
+                  setCampaignsVersion(v => v + 1);
+                } else {
+                  alert("Deposit failed: " + (result.message || "Unknown error"));
+                }
+              }
+            })
+            .catch((error) => {
+              console.error('Transaction error:', error);
+              alert("Transaction failed or was cancelled: " + error.message);
+            });
+        } catch (error) {
+          console.error('Deposit initiation error:', error);
+          alert("Failed to initiate deposit");
+        }
+      } else {
+        alert("Invalid amount entered.");
+      }
+    }
+  };
+
+  const handleCampaignsUpdate = () => {
+    setCampaignsVersion(v => v + 1);
+  };
 
   const adBalance = user?.ad_credit || 0;
   const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
@@ -375,40 +434,41 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
       setIsProcessing(true);
       try {
         const result = await addUserCampaignAPI({
-        userid: user.id,
-        link: taskLink,
-        goal: selectedTier.completions,
-        cost: totalCost,
-        category: selectedCategory,
-        checkSubscription: selectedCategory === 'Social' ? checkSubscription : false,
-        langs: selectedLanguages,
-      });
+          userid: user.id,
+          link: taskLink,
+          goal: selectedTier.completions,
+          cost: totalCost,
+          category: selectedCategory,
+          checkSubscription: selectedCategory === 'Social' ? checkSubscription : false,
+          langs: selectedLanguages,
+        });
 
-          if (result.success && result.user) {
-              alert(result.message);
-              setUser(result.user);
-              // Reset form
-              setTaskLink('');
-              setSelectedLanguages(['en']);
-              setCheckSubscription(false);
-              setSelectedTier(COMPLETION_TIERS[0]);
-              setSelectedCategory('Social');
-              // Switch tab and trigger refresh
-              setActiveTab('my');
-              setCampaignsVersion(v => v + 1);
-          } else {
-              alert(result.message || 'Campaign creation failed. Please try again.');
-          }
+        if (result.success && result.user) {
+          alert(result.message);
+          setUser(result.user);
+          // Reset form
+          setTaskLink('');
+          setSelectedLanguages(['en']);
+          setCheckSubscription(false);
+          setSelectedTier(COMPLETION_TIERS[0]);
+          setSelectedCategory('Social');
+          // Switch tab and trigger refresh
+          setActiveTab('my');
+          handleCampaignsUpdate();
+        } else {
+          alert(result.message || 'Campaign creation failed. Please try again.');
+        }
       } catch (error) {
-          console.error('Campaign creation error:', error);
-          alert('An unexpected error occurred during campaign creation.');
+        console.error('Campaign creation error:', error);
+        alert('An unexpected error occurred during campaign creation.');
       } finally {
-          setIsProcessing(false);
+        setIsProcessing(false);
       }
   };
 
   const getButtonText = () => {
     if (isProcessing) return 'Processing...';
+    if (!canAfford) return `Insufficient funds - Need ${totalCost.toFixed(2)} TON`;
     return `Pay ${totalCost.toFixed(2)} TON`;
   };
 
@@ -461,7 +521,14 @@ const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu
               />
             </>
         ) : (
-            <MyTasksComponent key={campaignsVersion} userid={user.id}/>
+            <MyTasksComponent 
+              key={campaignsVersion} 
+              userid={user.id}
+              user={user}
+              setUser={setUser}
+              onAddFunds={handleAddFunds}
+              onCampaignsUpdate={handleCampaignsUpdate}
+            />
         )}
       </main>
       

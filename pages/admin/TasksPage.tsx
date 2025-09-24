@@ -339,7 +339,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <div className="bg-slate-750 p-4 rounded-lg text-center">
             <h3 className="text-lg font-semibold text-slate-300">Active Tasks</h3>
             <p className="text-3xl font-bold text-green-500">
-              {dailyTasks.filter(t => t.status === 'ACTIVE').length}
+              {dailyTasks.filter(t => t.status === 'Active').length}
             </p>
           </div>
           <div className="bg-slate-750 p-4 rounded-lg text-center">

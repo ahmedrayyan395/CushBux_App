@@ -25,24 +25,24 @@ const GamePage: React.FC = () => {
       <section>
         <h2 className="text-xl font-bold mb-4 text-white">Games</h2>
         <div className="space-y-3">
-          <GameItem
+          {/* <GameItem
             to="/game/street-racing"
             icon={ICONS.car}
             title="Street Racing Empire"
             description="Customize your car and rule the streets!"
-          />
+          /> */}
           <GameItem
             to="/spin-wheel"
             icon={ICONS.gift}
             title="Spin Wheel"
             description="Win coins and TON prizes!"
           />
-           <GameItem
+           {/* <GameItem
             to="/game/space-defender"
             icon={ICONS.zap}
             title="Space Defender"
             description="Destroy aliens and upgrade your ship!"
-          />
+          /> */}
           {/* Future games will be added here */}
         </div>
       </section>

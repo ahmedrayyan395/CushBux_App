@@ -8,7 +8,7 @@ const navItems = [
     { path: 'tasks', label: 'Add Task', icon: ICONS.tasks },
     { path: 'questadmin', label: 'Quests Management', icon: '⚡' }, // Added Quests Management
     { path: 'promocodes', label: 'Promo Codes', icon: ICONS.promoCode },
-    { path: 'settings', label: 'Settings', icon: ICONS.settings },
+    // { path: 'settings', label: 'Settings', icon: ICONS.settings },
 ];
 interface AdminSidebarProps {
     onLogout: () => void;

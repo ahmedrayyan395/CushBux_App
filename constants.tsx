@@ -271,6 +271,7 @@ export const QUESTS: Quest[] = [
 
 
 export const TRANSACTIONS: Transaction[] = [];
+export const MIN_WITHDRAWAL_COINS = 1000;
 
 export const COMPLETION_TIERS: CompletionTier[] = [
     { completions: 250, cost: 0.50 },

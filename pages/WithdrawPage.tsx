@@ -138,8 +138,6 @@ const Pagination: React.FC<{
   );
 };
 
-
-
 const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void }> = ({ user, setUser }) => {
   const [transactionsData, setTransactionsData] = useState<TransactionsResponse>({
     transactions: [],
@@ -158,20 +156,10 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
 
-  // Calculate total TON balance (TON + converted coins)
-  const totalTonBalance = useMemo(() => {
-    if (!user) return 0;
-    
-    const tonBalance = user.ton ? Number(user.ton) : 0;
-    const coinsBalance = user.coins ? Number(user.coins) : 0;
-    const coinsInTon = coinsBalance / CONVERSION_RATE;
-    
-    return tonBalance + coinsInTon;
-  }, [user]);
-
+  // Calculate available TON balance from coins only
   const availableTonBalance = useMemo(() => {
-    if (!user) return 0;
-    return user.ton ? Number(user.ton) : 0;
+    if (!user || !user.coins) return 0;
+    return Number(user.coins) / CONVERSION_RATE;
   }, [user]);
 
   const availableCoinsBalance = useMemo(() => {
@@ -206,21 +194,11 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       return { isValid: false, message: `Minimum withdrawal is ${minWithdrawal} TON` };
     }
 
-    if (amount > totalTonBalance) {
-      return { isValid: false, message: "Insufficient total balance" };
-    }
-
-    // Check if user has enough TON, otherwise check if they have enough coins to convert
     if (amount > availableTonBalance) {
-      const remainingTonNeeded = amount - availableTonBalance;
-      const coinsNeeded = remainingTonNeeded * CONVERSION_RATE;
-      
-      if (coinsNeeded > availableCoinsBalance) {
-        return { 
-          isValid: false, 
-          message: `Insufficient balance. You need ${remainingTonNeeded.toFixed(6)} more TON (or ${coinsNeeded.toFixed(0)} coins)` 
-        };
-      }
+      return { 
+        isValid: false, 
+        message: `Insufficient coins balance. You need ${(amount * CONVERSION_RATE).toFixed(0)} coins for ${amount} TON` 
+      };
     }
 
     return { isValid: true, message: "" };
@@ -292,40 +270,35 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   };
 
   const handleMaxWithdraw = () => {
-    setWithdrawAmount(totalTonBalance.toFixed(6));
+    setWithdrawAmount(availableTonBalance.toFixed(6));
   };
 
   const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
   return (
     <div className="space-y-8">
-      {/* Balance Section - Enhanced */}
+      {/* Balance Section - Updated */}
       <div className="bg-slate-800 p-6 rounded-xl">
-        <h2 className="text-2xl font-bold text-white text-center mb-4">Your Balances</h2>
+        <h2 className="text-2xl font-bold text-white text-center mb-4">Your Balance</h2>
         
-        {/* Total TON Balance */}
+        {/* Available TON Balance from Coins */}
         <div className="text-center mb-6">
-          <p className="text-slate-300">Total Available Balance</p>
-          <p className="text-4xl font-bold text-white my-1">{totalTonBalance.toFixed(6)} TON</p>
+          <p className="text-slate-300">Available TON Balance (from Coins)</p>
+          <p className="text-4xl font-bold text-white my-1">{availableTonBalance.toFixed(6)} TON</p>
           <p className="text-green-400 font-semibold">
-            ≈ {(totalTonBalance * CONVERSION_RATE).toLocaleString()} Coins
+            ≈ {availableCoinsBalance.toLocaleString()} Coins
           </p>
         </div>
 
         {/* Breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <div className="bg-slate-700/50 p-3 rounded-lg">
-            <p className="text-slate-300">TON Balance</p>
-            <p className="text-blue-400 font-bold text-lg">{availableTonBalance.toFixed(6)} TON</p>
-          </div>
-          
-          <div className="bg-slate-700/50 p-3 rounded-lg">
+        <div className="grid grid-cols-1 gap-4 text-sm max-w-md mx-auto">
+          <div className="bg-slate-700/50 p-4 rounded-lg">
             <p className="text-slate-300">Coins Balance</p>
-            <p className="text-yellow-400 font-bold text-lg">
+            <p className="text-yellow-400 font-bold text-2xl">
               {availableCoinsBalance.toLocaleString()} Coins
             </p>
-            <p className="text-green-400 text-sm">
-              ≈ {(availableCoinsBalance / CONVERSION_RATE).toFixed(6)} TON
+            <p className="text-green-400 text-lg mt-1">
+              ≈ {availableTonBalance.toFixed(6)} TON
             </p>
           </div>
         </div>
@@ -357,7 +330,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
               onChange={(e) => setWithdrawAmount(e.target.value)}
               placeholder={`Min: ${minWithdrawal} TON`}
               min={minWithdrawal}
-              max={totalTonBalance}
+              max={availableTonBalance}
               step="0.001"
               className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none"
               disabled={!wallet || isWithdrawing}
@@ -372,7 +345,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
           </div>
           <div className="flex justify-between text-xs text-slate-400">
             <span>Min: {minWithdrawal} TON</span>
-            <span>Available: {totalTonBalance.toFixed(6)} TON</span>
+            <span>Available: {availableTonBalance.toFixed(6)} TON</span>
           </div>
         </div>
 
@@ -458,7 +431,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl">
         <h3 className="text-yellow-400 font-bold mb-2">⚠️ Important Notice</h3>
         <p className="text-yellow-300 text-sm">
-          Withdrawals will first use your TON balance, then automatically convert coins to TON if needed.
+          Withdrawals are now processed using coins only. Your coins will be automatically converted to TON.
           Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins.
         </p>
       </div>
