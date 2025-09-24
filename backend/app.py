@@ -518,6 +518,9 @@ class UserCampaign(db.Model):
             'type': self.type
         }
 
+
+
+
 class PartnerCampaign(UserCampaign):
     __tablename__ = 'partner_campaigns'
 
@@ -1234,6 +1237,8 @@ def get_my_unclaimed_created_campaigns():
         except Exception as fallback_error:
             print(f"Fallback also failed: {fallback_error}")
             return jsonify([]), 200
+
+
 
 
 @app.route('/campaigns', methods=['GET'])
@@ -3150,72 +3155,6 @@ def reverse_invalid_deposit(user_id: int, amount: Decimal, transaction_id: int):
 
 
 
-#real implemnetaion 
-# @app.route('/api/user/deposit-ad-credit', methods=['POST'])
-# @jwt_required
-# def deposit_ad_credit():
-#     data = request.get_json()
-#     user = current_user()
-    
-#     amount = data.get('amount')
-#     if not amount or amount <= 0:
-#         return jsonify({
-#             "success": False,
-#             "message": "Invalid amount"
-#         }), 400
-    
-#     try:
-#         # In a real implementation, you would:
-#         # 1. Verify the user actually sent the TON to your wallet
-#         # 2. Check blockchain confirmation
-#         # 3. Then update the balance
-        
-#         # For simulation/demo purposes, we'll just update the balance
-#         deposit_amount = Decimal(str(amount))
-        
-#         # Check if user has enough TON balance (if deducting from main balance)
-#         if user.ton < deposit_amount:
-#             return jsonify({
-#                 "success": False,
-#                 "message": "Insufficient TON balance"
-#             }), 400
-        
-#         # Transfer from TON balance to ad credit
-#         user.ton -= deposit_amount
-#         user.ad_credit += deposit_amount
-        
-#         # Create transaction record
-#         transaction = Transaction(
-#             id=f"deposit_ad_{int(datetime.now().timestamp())}_{user.id}",
-#             user_id=user.id,
-#             type=TransactionType.TRANSFER,
-#             amount=deposit_amount,
-#             currency=TransactionCurrency.TON,
-#             status=TransactionStatus.COMPLETED,
-#             description=f"Transferred to ad credit"
-#         )
-#         db.session.add(transaction)
-        
-#         db.session.commit()
-        
-#         return jsonify({
-#             "success": True,
-#             "message": "Deposit successful",
-#             "user": user.to_dict()
-#         })
-        
-#     except Exception as e:
-#         db.session.rollback()
-#         print(f"Deposit error: {e}")
-#         return jsonify({
-#             "success": False,
-#             "message": "Deposit failed"
-#         }), 500        
-
-
-
-
-
 
 
 
@@ -3293,7 +3232,7 @@ def spin_wheel():
         elif selected_prize["type"] == "ton":
             # Assuming you have a TON balance field or using ad_credit for TON
             if hasattr(user, 'ton'):
-                user.ton += Decimal(str(selected_prize["value"]))
+                user.ad_credit += Decimal(str(selected_prize["value"]))
             else:
                 user.ad_credit += Decimal(str(selected_prize["value"]))
                 
@@ -3659,53 +3598,55 @@ def withdraw_ton():
     if amount is None or amount <= 0:
         return jsonify({"success": False, "message": "Invalid withdrawal amount"}), 400
 
-    # Convert amount to Decimal
+    # Convert amount to Decimal for calculations
     withdrawal_amount = Decimal(str(amount))
     conversion_rate = Decimal(str(CONVERSION_RATE))
 
-    # Check total available balance (TON + converted coins)
-    ton_balance = user.ton if user.ton else Decimal('0')
-    coins_balance = user.coins if user.coins else Decimal('0')
-    coins_in_ton = coins_balance / conversion_rate
-    total_balance = ton_balance + coins_in_ton
+    # Calculate coins needed for withdrawal
+    coins_balance = Decimal(str(user.coins)) if user.coins else Decimal('0')
+    coins_needed = withdrawal_amount * conversion_rate
 
-    if withdrawal_amount > total_balance:
-        return jsonify({"success": False, "message": "Insufficient total balance"}), 400
+    # Check if user has enough coins
+    if coins_needed > coins_balance:
+        return jsonify({
+            "success": False, 
+            "message": f"Insufficient coins balance. You need {coins_needed:.0f} coins for {withdrawal_amount} TON"
+        }), 400
 
-    # Calculate how much to deduct from each balance
-    ton_to_deduct = min(withdrawal_amount, ton_balance)
-    remaining_amount = withdrawal_amount - ton_to_deduct
-    
-    coins_to_convert = remaining_amount * conversion_rate
-
-    # Update balances
-    user.ton = ton_balance - ton_to_deduct
-    user.coins = coins_balance - coins_to_convert
+    # Update coins balance - convert to float for SQLite compatibility
+    new_coins_balance = float(coins_balance - coins_needed)
+    user.coins = new_coins_balance
 
     # Create withdrawal transaction record
-    transaction_description = f"Withdrawal of {amount} TON"
-    if coins_to_convert > 0:
-        transaction_description += f" (Converted {coins_to_convert:.0f} coins)"
+    transaction_description = f"Withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins)"
 
     transaction = Transaction(
         user_id=user.id,
-        amount=Decimal(-amount),
+        amount=float(-withdrawal_amount),  # Convert to float for SQLite
         transaction_type=TransactionType.WITHDRAWAL,
         currency=TransactionCurrency.TON,
         status=TransactionStatus.PENDING,
         description=transaction_description
     )
-    db.session.add(transaction)
-    db.session.commit()
-
-    return jsonify({
-        "success": True,
-        "message": f"Withdrawal processed for {amount} TON",
-        "user": user.to_dict(),
-        "transactionId": transaction.id
-    })
-
-
+    
+    try:
+        db.session.add(transaction)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Withdrawal processed for {withdrawal_amount} TON using {coins_needed:.0f} coins",
+            "user": user.to_dict(),
+            "transactionId": transaction.id
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error: {e}")
+        return jsonify({
+            "success": False, 
+            "message": "Database error occurred during withdrawal"
+        }), 500
 
 
 @app.route('/api/withdraw/update-transaction', methods=['POST'])
@@ -4026,3 +3967,63 @@ def delete_quest(quest_id):
         db.session.rollback()
         print(f"Error deleting quest {quest_id}: {e}")
         return jsonify({'error': 'Failed to delete quest'}), 500
+
+
+
+@app.route('/api/admin/dashboard/stats', methods=['GET'])
+@jwt_required
+def get_dashboard_stats():
+    try:
+        # Check if user is admin (you'll need to implement this check)
+        # For now, we'll assume the endpoint is protected by admin middleware
+        
+        # Total Users
+        total_users = db.session.query(func.count(User.id)).scalar()
+        
+        # Total Coins in Circulation (sum of all users' coins)
+        total_coins_result = db.session.query(func.sum(User.coins)).scalar()
+        total_coins = total_coins_result if total_coins_result else 0
+        
+        # Total TON Withdrawn (sum of completed withdrawal transactions)
+        total_withdrawals_result = db.session.query(
+            func.sum(Transaction.amount)
+        ).filter(
+            Transaction.transaction_type == TransactionType.WITHDRAWAL,
+            Transaction.currency == TransactionCurrency.TON,
+            Transaction.status == TransactionStatus.COMPLETED
+        ).scalar()
+        total_withdrawals = abs(float(total_withdrawals_result)) if total_withdrawals_result else 0.0
+        
+        # Tasks Completed (sum of all task completions)
+        # Count daily task completions
+        daily_tasks_completed = db.session.query(
+            func.count(user_daily_task_completions.c.user_id)
+        ).filter(
+            user_daily_task_completions.c.claimed == True
+        ).scalar() or 0
+        
+        # Count campaign task completions
+        campaign_tasks_completed = db.session.query(
+            func.count(user_task_completion.c.user_id)
+        ).filter(
+            user_task_completion.c.completed_at.isnot(None)
+        ).scalar() or 0
+        
+        total_tasks_completed = daily_tasks_completed + campaign_tasks_completed
+        
+        return jsonify({
+            'success': True,
+            'stats': {
+                'totalUsers': total_users,
+                'totalCoins': total_coins,
+                'totalWithdrawals': total_withdrawals,
+                'tasksCompleted': total_tasks_completed
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error fetching dashboard stats: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to fetch dashboard statistics'
+        }), 500
