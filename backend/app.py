@@ -113,11 +113,27 @@ def seed_users():
             ton=125,
             referral_earnings=0,
             spins=522,
-            ad_credit=0.0,
+            ad_credit=111.0,
             ads_watched_today=2,
             tasks_completed_today_for_spin=1,
             friends_invited_today_for_spin=0,
             language_code="ar",  # Arabic user
+            space_defender_progress={"weaponLevel": 2, "shieldLevel": 1, "speedLevel": 1},
+            street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
+            banned=False
+        ),
+        User(
+            id=4,   # Telegram ID
+            name="vgg",  # Arabic name
+            coins=50000000,
+            ton=125,
+            referral_earnings=0,
+            spins=522,
+            ad_credit=111.0,
+            ads_watched_today=2,
+            tasks_completed_today_for_spin=1,
+            friends_invited_today_for_spin=0,
+            language_code="en",  # Arabic user
             space_defender_progress={"weaponLevel": 2, "shieldLevel": 1, "speedLevel": 1},
             street_racing_progress={"currentCar": 2, "unlockedCars": [1, 2], "carUpgrades": {}, "careerPoints": 50, "adProgress": {"engine": 1, "tires": 0, "nitro": 0}},
             banned=False
@@ -1184,41 +1200,42 @@ def get_my_created_campaigns():
 
 @app.route('/usercampaigns/unclaimed', methods=['GET'])
 @jwt_required
-def get_my_unclaimed_created_campaigns():
-    """Return campaigns created by the current user that they haven't yet claimed, filtered by user's language."""
+def get_unclaimed_campaigns():
+    """Return all campaigns that the current user hasn't completed yet and where completions haven't reached the goal, filtered by user's language."""
     try:
-        current_user_id = current_user().id
-        
+        # current_user_id = current_user().id
+        user_id = request.args.get('user_id', type=int)
+    
+        if not user_id:
+            return jsonify({"success": False, "message": "Missing user_id"}), 400
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
         # Get the current user's language preference
-        current_user_obj = User.query.get(current_user_id)
+        current_user_obj = User.query.get(user_id)
         user_language = current_user_obj.language_code if current_user_obj else 'en'
 
-        # Get IDs of campaigns this user has already completed
-        completed_records = db.session.execute(
-            user_task_completion.select().where(
-                (user_task_completion.c.user_id == current_user_id) &
-                (user_task_completion.c.completed_at.isnot(None))
-            )
-        ).all()
-        completed_campaign_ids = [record.campaign_id for record in completed_records]
-
-        # Query campaigns created by this user that are NOT completed by them
-        # AND have the user's language in their languages list (or languages is empty/null)
-        user_campaigns = UserCampaign.query.filter(
-            (UserCampaign.creator_id == current_user_id) &
-            (~UserCampaign.id.in_(completed_campaign_ids))
+        # Single query using LEFT JOIN to exclude completed campaigns AND campaigns that reached goal
+        unclaimed_campaigns = db.session.query(UserCampaign).outerjoin(
+            user_task_completion,
+            (user_task_completion.c.campaign_id == UserCampaign.id) & 
+            (user_task_completion.c.user_id == user_id) &
+            (user_task_completion.c.completed_at.isnot(None))
+        ).filter(
+            user_task_completion.c.campaign_id.is_(None),  # No completed records exist
+            UserCampaign.completions < UserCampaign.goal   # Exclude campaigns that reached goal
         ).all()
 
-        # Filter campaigns by language - only include campaigns that:
-        # 1. Have no languages specified (empty list/null) OR
-        # 2. Include the user's language in their languages list
+        # Filter campaigns by language
         filtered_campaigns = []
-        for campaign in user_campaigns:
-            # If campaign has no language restrictions, include it
-            if not campaign.langs or campaign.langs == []:
-                filtered_campaigns.append(campaign)
-            # If campaign has languages list, check if user's language is included
-            elif user_language in campaign.langs:
+        for campaign in unclaimed_campaigns:
+            # If campaign has no language restrictions or user's language is included
+            if (not campaign.langs or 
+                campaign.langs == [] or 
+                campaign.langs == [''] or 
+                user_language in campaign.langs):
                 filtered_campaigns.append(campaign)
         
         # Sort by ID
@@ -1227,17 +1244,8 @@ def get_my_unclaimed_created_campaigns():
         return jsonify([c.to_dict() for c in filtered_campaigns]), 200
 
     except Exception as e:
-        print(f"Error fetching my unclaimed campaigns: {e}")
-        # Fallback: try to return at least some campaigns without language filtering
-        try:
-            user_campaigns = UserCampaign.query.filter_by(
-                creator_id=current_user().id
-            ).order_by(UserCampaign.id).all()
-            return jsonify([c.to_dict() for c in user_campaigns]), 200
-        except Exception as fallback_error:
-            print(f"Fallback also failed: {fallback_error}")
-            return jsonify([]), 200
-
+        print(f"Error fetching unclaimed campaigns: {e}")
+        return jsonify([]), 200
 
 
 
@@ -4038,6 +4046,82 @@ def get_dashboard_stats():
 
 
 
+# @app.route('/campaign/reactivate', methods=['POST'])
+# @jwt_required
+# def reactivate_campaign():
+#     try:
+#         data = request.get_json()
+#         user_id = data.get('user_id')
+#         campaign_id = data.get('campaign_id')
+        
+#         if not user_id or not campaign_id:
+#             return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+        
+#         user = User.query.get(user_id)
+        
+#         # Check if user has this campaign in their completions
+#         campaign_completion = db.session.query(user_task_completion).filter_by(
+#             user_id=user_id, 
+#             campaign_id=campaign_id
+#         ).first()
+        
+#         if not campaign_completion:
+#             return jsonify({'success': False, 'message': 'Campaign not found for this user'}), 404
+        
+#         # Get the campaign details
+#         campaign = UserCampaign.query.get(campaign_id)
+#         if not campaign:
+#             return jsonify({'success': False, 'message': 'Campaign not found'}), 404
+        
+#         # # Check if campaign is completed (based on completion status)
+#         # if campaign_completion.completed_at is not None:
+#         #     return jsonify({'success': False, 'message': 'Only completed campaigns can be reactivated'}), 400
+        
+#         # Calculate reactivation cost (same as original cost)
+#         reactivation_cost = campaign.cost
+        
+#         if user.ad_credit < reactivation_cost:
+#             return jsonify({
+#                 'success': False, 
+#                 'message': f'Insufficient funds. Need {reactivation_cost} TON, but only have {user.ad_credit} TON'
+#             }), 400
+        
+#         # Deduct from user's ad credit
+#         user.ad_credit -= reactivation_cost
+#         campaign.completions=0
+        
+#         # Reset the completion status
+#         db.session.execute(
+#             user_task_completion.update().where(
+#                 (user_task_completion.c.user_id == user_id) & 
+#                 (user_task_completion.c.campaign_id == campaign_id)
+#             ).values(
+#                 completed_at=None,
+#                 started_at=func.now()
+#             )
+#         )
+        
+#         # Update campaign cost (add to total spent by this user)
+#         # Since cost is stored per campaign, we might need a different approach
+#         # Let's track user's total spend separately or update the campaign cost
+        
+#         db.session.commit()
+        
+#         return jsonify({
+#             'success': True,
+#             'user': user.to_dict(),
+#             'message': 'Campaign reactivated successfully'
+#         })
+        
+#     except Exception as e:
+#         db.session.rollback()
+#         return jsonify({'success': False, 'message': str(e)}), 500
+   
+
+
+
+
+
 @app.route('/campaign/reactivate', methods=['POST'])
 @jwt_required
 def reactivate_campaign():
@@ -4065,10 +4149,6 @@ def reactivate_campaign():
         if not campaign:
             return jsonify({'success': False, 'message': 'Campaign not found'}), 404
         
-        # # Check if campaign is completed (based on completion status)
-        # if campaign_completion.completed_at is not None:
-        #     return jsonify({'success': False, 'message': 'Only completed campaigns can be reactivated'}), 400
-        
         # Calculate reactivation cost (same as original cost)
         reactivation_cost = campaign.cost
         
@@ -4080,32 +4160,38 @@ def reactivate_campaign():
         
         # Deduct from user's ad credit
         user.ad_credit -= reactivation_cost
-        campaign.completions=0
         
-        # Reset the completion status
-        db.session.execute(
-            user_task_completion.update().where(
-                (user_task_completion.c.user_id == user_id) & 
-                (user_task_completion.c.campaign_id == campaign_id)
-            ).values(
-                completed_at=None,
-                started_at=func.now()
-            )
-        )
+        # Reset campaign completions to 0
+        campaign.completions = 0
         
-        # Update campaign cost (add to total spent by this user)
-        # Since cost is stored per campaign, we might need a different approach
-        # Let's track user's total spend separately or update the campaign cost
+        # Delete ALL completed records for this user in this campaign
+        # db.session.execute(
+        #     user_task_completion.delete().where(
+        #         (user_task_completion.c.user_id == user_id) & 
+        #         (user_task_completion.c.campaign_id == campaign_id) &
+        #         (user_task_completion.c.completed_at.isnot(None))
+        #     )
+        # )
         
+        # Create a new fresh entry for the user
+        # db.session.execute(
+        #     user_task_completion.insert().values(
+        #         user_id=user_id,
+        #         campaign_id=campaign_id,
+        #         started_at=func.now(),
+        #         completed_at=None
+        #     )
+        # )
+        
+       
         db.session.commit()
         
         return jsonify({
             'success': True,
             'user': user.to_dict(),
-            'message': 'Campaign reactivated successfully'
+            'message': 'Campaign reactivated successfully. All previous completions cleared.'
         })
         
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
-   
