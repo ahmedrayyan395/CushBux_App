@@ -86,7 +86,7 @@ const SettingsPage: React.FC = () => {
         </section>
 
         {/* Ad Network Settings */}
-        <section className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+        {/* <section className="bg-slate-800 p-6 rounded-xl border border-slate-700">
           <h2 className="text-2xl font-bold mb-4">Ad Network Management</h2>
           <div className="space-y-3 mb-6">
             {adNetworks.map(network => (
@@ -116,7 +116,9 @@ const SettingsPage: React.FC = () => {
             ))}
           </div>
           <AddNetworkForm onAdd={handleAddAdNetwork} />
-        </section>
+        </section> */}
+
+        
       </div>
     </div>
   );

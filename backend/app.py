@@ -1162,6 +1162,26 @@ def get_my_created_campaigns():
     return jsonify(campaigns_list), 200
 
 
+@app.route('/my-partnercampaigns', methods=['GET'])
+def get_my_partner_campaigns():
+    user_id = request.args.get('user_id', type=int)
+    
+    if not user_id:
+        return jsonify({"success": False, "message": "Missing user_id"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    # Query only partner campaigns for this user
+    partner_campaigns = PartnerCampaign.query.filter_by(creator_id=user_id).order_by(PartnerCampaign.id).all()
+    
+    if not partner_campaigns:
+        return jsonify([]), 200
+        
+    campaigns_list = [campaign.to_dict() for campaign in partner_campaigns]
+    
+    return jsonify(campaigns_list), 200
 
 # @app.route('/usercampaigns/unclaimed', methods=['GET'])
 # @jwt_required
@@ -1389,6 +1409,9 @@ def create_campaign():
         "newCampaign": new_campaign.to_dict(),  # This will include the langs array
         "user": user.to_dict()
     }), 201
+
+
+
 
 
 
@@ -4141,8 +4164,8 @@ def reactivate_campaign():
             campaign_id=campaign_id
         ).first()
         
-        if not campaign_completion:
-            return jsonify({'success': False, 'message': 'Campaign not found for this user'}), 404
+        # if not campaign_completion:
+        #     return jsonify({'success': False, 'message': 'Campaign not found for this user'}), 404
         
         # Get the campaign details
         campaign = UserCampaign.query.get(campaign_id)

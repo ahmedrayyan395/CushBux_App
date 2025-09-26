@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COMPLETION_TIERS } from '../constants';
 import type { CompletionTier, UserCampaign, User } from '../types';
-import { fetchUserCampaigns, depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI, reactivateCampaignAPI } from '../services/api';
+import { depositAdCreditAPI, fetchUserCampaignsAPI, addUserCampaignAPI , reactivateCampaignAPI } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 import { useTonWallet, useTonConnectUI } from '@tonconnect/ui-react';
 

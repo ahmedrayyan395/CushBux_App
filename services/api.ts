@@ -442,11 +442,11 @@ export const fetchUserCampaignsAPI = async (userId: number): Promise<(UserCampai
 };
 
 export const fetchUserCampaignsPartnerAPI = async (userId: number): Promise<PartnerCampaign[]> => {
-  return apiFetch<PartnerCampaign[]>(`/my-partnercampaigns?user_id=${userId}&type=partner`, {
+  const data = await apiFetch<PartnerCampaign[]>(`/my-partnercampaigns?user_id=${userId}`, {
     method: 'GET',
   });
+  return data;
 };
-
 
 
 // export const fetchMyCreatedCampaignsAPI = async (): Promise<(UserCampaign | PartnerCampaign)[]> => {
