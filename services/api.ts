@@ -35,10 +35,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 
-// const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
+// const API_BASE_URL = 'https://600ef52508e9.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -1333,15 +1333,21 @@ export const buySpins = async (data: {
 
 // services/api.ts
 // services/api.ts
-export const executeWithdrawal = async (
-  amount: number,
-  userId: number
-): Promise<{
+// types.ts
+export interface WithdrawalResponse {
   success: boolean;
   message: string;
   user?: User;
   transactionId?: number;
-}> => {
+  requiresApproval?: boolean; // Add this
+}
+
+
+// services/api.ts
+export const executeWithdrawal = async (
+  amount: number,
+  userId: number
+): Promise<WithdrawalResponse> => { // Use the updated interface
   return apiFetch('/api/withdraw/ton', {
     method: 'POST',
     body: JSON.stringify({ 
@@ -1630,7 +1636,28 @@ export const reactivateCampaignAPI = async (
 
 
 
+// services/api.ts
+export const fetchPendingTransactions = async (): Promise<Transaction[]> => {
+  const response = await apiFetch<{ success: boolean; transactions: Transaction[] }>(
+    '/api/admin/transactions/pending',
+    { method: 'GET' }
+  );
+  return response.transactions || [];
+};
 
+export const approveTransaction = async (transactionId: number): Promise<{ success: boolean }> => {
+  return apiFetch('/api/admin/transactions/approve', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_id: transactionId }),
+  });
+};
+
+export const rejectTransaction = async (transactionId: number, reason: string): Promise<{ success: boolean }> => {
+  return apiFetch('/api/admin/transactions/reject', {
+    method: 'POST',
+    body: JSON.stringify({ transaction_id: transactionId, reason }),
+  });
+};
 
 
 

@@ -204,71 +204,83 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     return { isValid: true, message: "" };
   };
 
-  const handleWithdraw = async () => {
+  // In your WithdrawPage component, update the handleWithdraw function:
+
+const handleWithdraw = async () => {
     if (!wallet || !user || !withdrawAmount) return;
     
     const amount = parseFloat(withdrawAmount);
     const validation = validateWithdrawalAmount(amount);
     
     if (!validation.isValid) {
-      alert(validation.message);
-      return;
+        alert(validation.message);
+        return;
     }
 
     setIsWithdrawing(true);
 
     try {
-      const result = await executeWithdrawal(amount, user.id);
-      
-      if (!result.success || !result.user) {
-        throw new Error(result.message || "Failed to process withdrawal");
-      }
+        const result = await executeWithdrawal(amount, user.id);
+        
+        if (!result.success || !result.user) {
+            throw new Error(result.message || "Failed to process withdrawal");
+        }
 
-      setUser(result.user);
+        // Only update user balance if auto-withdrawals are enabled
+        if (!result.requiresApproval) {
+            setUser(result.user);
+        }
 
-      const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
-        messages: [
-          {
-            address: wallet.account.address,
-            amount: Math.round(amount * 1e9).toString(),
-          },
-        ],
-      };
+        // Only proceed with blockchain transaction if auto-withdrawals are enabled
+        if (!result.requiresApproval) {
+            const transaction = {
+                validUntil: Math.floor(Date.now() / 1000) + 300,
+                messages: [
+                    {
+                        address: wallet.account.address,
+                        amount: Math.round(amount * 1e9).toString(),
+                    },
+                ],
+            };
 
-      const txResponse = await tonConnectUI.sendTransaction(transaction);
+            const txResponse = await tonConnectUI.sendTransaction(transaction);
 
-      if (!txResponse?.boc) {
-        throw new Error("Transaction failed: no response from wallet.");
-      }
+            if (!txResponse?.boc) {
+                throw new Error("Transaction failed: no response from wallet.");
+            }
 
-      if (result.transactionId) {
-        await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
-      }
+            if (result.transactionId) {
+                await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
+            }
+        }
 
-      setWithdrawAmount('');
-      await loadTransactions();
-      alert(`Successfully withdrew ${amount} TON to your wallet!`);
+        setWithdrawAmount('');
+        await loadTransactions();
+        
+        if (result.requiresApproval) {
+            alert(`Withdrawal submitted for approval. ${amount} TON will be processed after admin review.`);
+        } else {
+            alert(`Successfully withdrew ${amount} TON to your wallet!`);
+        }
 
     } catch (error: any) {
-      console.error("Withdrawal failed:", error);
-      const errorMessage = error.message || "Transaction was cancelled or failed.";
-      
-      if (user) {
-        // Revert the balance - we'll need to handle this properly in the backend
-        const revertedUser = { ...user };
-        setUser(revertedUser);
-      }
+        console.error("Withdrawal failed:", error);
+        const errorMessage = error.message || "Transaction was cancelled or failed.";
+        
+        // Only revert if auto-withdrawals were enabled (balance was deducted)
+        if (user && !errorMessage.toLowerCase().includes('user rejected')) {
+            const revertedUser = { ...user };
+            setUser(revertedUser);
+        }
 
-      if (!errorMessage.toLowerCase().includes('user rejected') && 
-          !errorMessage.toLowerCase().includes('transaction was cancelled')) {
-        alert(errorMessage);
-      }
+        if (!errorMessage.toLowerCase().includes('user rejected') && 
+            !errorMessage.toLowerCase().includes('transaction was cancelled')) {
+            alert(errorMessage);
+        }
     } finally {
-      setIsWithdrawing(false);
+        setIsWithdrawing(false);
     }
-  };
-
+};
   const handleMaxWithdraw = () => {
     setWithdrawAmount(availableTonBalance.toFixed(6));
   };

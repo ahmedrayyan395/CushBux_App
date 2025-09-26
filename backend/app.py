@@ -3612,6 +3612,7 @@ def verify_ton_transaction_sync_logic(transaction_boc: str, expected_amount: Dec
 
 # app.py
 # app.py - Update the withdraw_ton endpoint
+
 @app.route('/api/withdraw/ton', methods=['POST'])
 @jwt_required
 def withdraw_ton():
@@ -3644,19 +3645,31 @@ def withdraw_ton():
             "message": f"Insufficient coins balance. You need {coins_needed:.0f} coins for {withdrawal_amount} TON"
         }), 400
 
-    # Update coins balance - convert to float for SQLite compatibility
-    new_coins_balance = float(coins_balance - coins_needed)
-    user.coins = new_coins_balance
+    # Check auto-withdrawal setting
+    settings = Settings.query.first()
+    if not settings:
+        settings = Settings(auto_withdrawals=False)
+        db.session.add(settings)
+        db.session.commit()
+
+    # Determine transaction status based on auto-withdrawal setting
+    transaction_status = TransactionStatus.COMPLETED if settings.auto_withdrawals else TransactionStatus.PENDING
+
+    # Update coins balance only if auto-withdrawals are enabled
+    if settings.auto_withdrawals:
+        new_coins_balance = float(coins_balance - coins_needed)
+        user.coins = new_coins_balance
 
     # Create withdrawal transaction record
-    transaction_description = f"Withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins)"
+    status_description = "Auto-approved" if settings.auto_withdrawals else "Pending admin approval"
+    transaction_description = f"Withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins) - {status_description}"
 
     transaction = Transaction(
         user_id=user.id,
-        amount=float(-withdrawal_amount),  # Convert to float for SQLite
+        amount=float(-withdrawal_amount),
         transaction_type=TransactionType.WITHDRAWAL,
         currency=TransactionCurrency.TON,
-        status=TransactionStatus.PENDING,
+        status=transaction_status,
         description=transaction_description
     )
     
@@ -3664,11 +3677,15 @@ def withdraw_ton():
         db.session.add(transaction)
         db.session.commit()
         
+        message = (f"Withdrawal {'processed' if settings.auto_withdrawals else 'submitted for approval'} "
+                  f"for {withdrawal_amount} TON using {coins_needed:.0f} coins")
+        
         return jsonify({
             "success": True,
-            "message": f"Withdrawal processed for {withdrawal_amount} TON using {coins_needed:.0f} coins",
+            "message": message,
             "user": user.to_dict(),
-            "transactionId": transaction.id
+            "transactionId": transaction.id,
+            "requiresApproval": not settings.auto_withdrawals
         })
         
     except Exception as e:
@@ -3678,7 +3695,6 @@ def withdraw_ton():
             "success": False, 
             "message": "Database error occurred during withdrawal"
         }), 500
-
 
 @app.route('/api/withdraw/update-transaction', methods=['POST'])
 @jwt_required
@@ -4218,3 +4234,100 @@ def reactivate_campaign():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+# app.py - Add these endpoints
+
+@app.route('/api/admin/transactions/pending', methods=['GET'])
+@jwt_required
+def get_pending_transactions():
+    """Get all pending withdrawal transactions"""
+    # Check if user is admin (implement your admin check logic)
+    # if not current_user.is_admin:
+    #     return jsonify({"success": False, "message": "Admin access required"}), 403
+    
+    pending_transactions = Transaction.query.filter(
+        Transaction.transaction_type == TransactionType.WITHDRAWAL,
+        Transaction.status == TransactionStatus.PENDING
+    ).order_by(Transaction.created_at.desc()).all()
+    
+    transactions_data = [tx.to_dict() for tx in pending_transactions]
+    
+    return jsonify({
+        'success': True,
+        'transactions': transactions_data
+    })
+
+@app.route('/api/admin/transactions/approve', methods=['POST'])
+@jwt_required
+def approve_pending_transaction():
+    """Approve a pending withdrawal transaction"""
+    # if not current_user.is_admin:
+    #     return jsonify({"success": False, "message": "Admin access required"}), 403
+    
+    data = request.get_json()
+    transaction_id = data.get('transaction_id')
+    
+    transaction = Transaction.query.get(transaction_id)
+    if not transaction:
+        return jsonify({"success": False, "message": "Transaction not found"}), 404
+    
+    if transaction.status != TransactionStatus.PENDING:
+        return jsonify({"success": False, "message": "Transaction is not pending"}), 400
+    
+    # Update transaction status to completed
+    transaction.status = TransactionStatus.COMPLETED
+    transaction.description = f"{transaction.description} - Approved by admin"
+    
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Transaction approved successfully"
+    })
+
+@app.route('/api/admin/transactions/reject', methods=['POST'])
+@jwt_required
+def reject_pending_transaction():
+    """Reject a pending withdrawal transaction and refund coins"""
+    # if not current_user.is_admin:
+    #     return jsonify({"success": False, "message": "Admin access required"}), 403
+    
+    data = request.get_json()
+    transaction_id = data.get('transaction_id')
+    reason = data.get('reason', 'Transaction rejected by admin')
+    
+    transaction = Transaction.query.get(transaction_id)
+    if not transaction:
+        return jsonify({"success": False, "message": "Transaction not found"}), 404
+    
+    if transaction.status != TransactionStatus.PENDING:
+        return jsonify({"success": False, "message": "Transaction is not pending"}), 400
+    
+    # Refund coins to user
+    user = User.query.get(transaction.user_id)
+    if user and transaction.currency == TransactionCurrency.TON:
+        # Calculate coins to refund (reverse the conversion)
+        ton_amount = Decimal(str(abs(transaction.amount)))
+        coins_refund = ton_amount * Decimal(str(CONVERSION_RATE))
+        user.coins = float(Decimal(str(user.coins)) + coins_refund)
+    
+    # Update transaction status to failed
+    transaction.status = TransactionStatus.FAILED
+    transaction.description = f"{transaction.description} - Rejected: {reason}"
+    
+    db.session.commit()
+    
+    return jsonify({
+        "success": True,
+        "message": "Transaction rejected and coins refunded"
+    })
+

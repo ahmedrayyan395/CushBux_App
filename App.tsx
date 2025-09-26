@@ -80,7 +80,7 @@ const App: React.FC = () => {
   //   }
   // }, []);
 
-    const IS_DEV_MODE = true;
+    const IS_DEV_MODE = false;
     const DEV_USER_ID =4; // The ID of the user from your database you want to simulate.
 
 
