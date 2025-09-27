@@ -1,3 +1,4 @@
+
 import type { User, DailyTask, GameTask, Quest, Transaction, Friend, UserCampaign, PartnerCampaign, PromoCode, AdNetwork, AdminUser, Task, QuestResponse } from '../types';
 import { INITIAL_USER, DAILY_TASKS, GAME_TASKS, QUESTS, TRANSACTIONS, CONVERSION_RATE, MOCK_FRIENDS, MOCK_USER_CAMPAIGNS, MOCK_PROMO_CODES, SPIN_WHEEL_PRIZES, SPIN_STORE_PACKAGES, MOCK_ADMINS, generateMockUsers, ICONS } from '../constants';
 import { get } from 'http';
@@ -35,10 +36,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
 // const API_BASE_URL = 'https://api.cashubux.com/';
 
-// const API_BASE_URL = 'https://aa898d1a38a2.ngrok-free.app';
+const API_BASE_URL = 'https://51bbe8f62dc0.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -1365,6 +1366,25 @@ export const updateWithdrawalTransaction = async (
 
 
 
+// In your services/api.ts file
+export const updateUserWallet = async (userId: number, walletAddress: string): Promise<{ success: boolean; user?: User; message?: string }> => {
+  try {
+    const response = await fetch(`/api/user/${userId}/wallet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ wallet_address: walletAddress })
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error updating wallet address:', error);
+    return { success: false, message: 'Failed to update wallet address' };
+  }
+};
+
 
 
 
@@ -1621,16 +1641,6 @@ export const reactivateCampaignAPI = async (
     };
   }
 };
-
-
-
-
-
-
-
-
-
-
 
 
 

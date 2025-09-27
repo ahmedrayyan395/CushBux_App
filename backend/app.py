@@ -312,6 +312,9 @@ from datetime import datetime
 
 class User(db.Model):
     __tablename__ = 'users'
+
+    # Wallet address for withdrawals
+    wallet_address = db.Column(db.String(255), nullable=True)
     
     id = db.Column(db.BigInteger, primary_key=True, autoincrement=False, comment="Corresponds to Telegram ID")
     name = db.Column(db.String(255), nullable=False)
@@ -376,6 +379,7 @@ class User(db.Model):
             "id": self.id,
             "name": self.name,
             "coins": self.coins,
+            "wallet_address": self.wallet_address,  # Add this line
             "ton": float(self.ton),
             "referral_earnings": self.referral_earnings,
             "spins": self.spins,
@@ -400,6 +404,7 @@ class User(db.Model):
 # Quest Models
 class Quest(db.Model):
     __tablename__ = 'quests'
+    
     
     id = db.Column(db.String(50), primary_key=True)
     title = db.Column(db.String(255), nullable=False)
@@ -2998,36 +3003,26 @@ def daily_reset():
 @jwt_required
 def deposit_ad_credit():
     data = request.get_json()
-    
+
     user_id = data.get('user_id')
     amount = data.get('amount')
     transaction_hash = data.get('transaction_hash')
     payment_method = data.get('payment_method', 'MANUAL')  # MANUAL or BLOCKCHAIN
 
     if not user_id or not isinstance(user_id, int):
-        return jsonify({
-            "success": False,
-            "message": "User ID is required and must be an integer"
-        }), 400
+        return jsonify({"success": False, "message": "User ID is required and must be an integer"}), 400
 
     if not amount or amount <= 0:
-        return jsonify({
-            "success": False,
-            "message": "Invalid amount"
-        }), 400
+        return jsonify({"success": False, "message": "Invalid amount"}), 400
 
     try:
         user = User.query.get(user_id)
         if not user:
-            return jsonify({
-                "success": False,
-                "message": "User not found"
-            }), 404
+            return jsonify({"success": False, "message": "User not found"}), 404
 
-        # Convert to Decimal for precise calculations
         deposit_amount = Decimal(str(amount))
 
-        # Update user's ad credit balance
+        # Update user's balance immediately for better UX
         if user.ad_credit is None:
             user.ad_credit = Decimal('0')
         user.ad_credit += deposit_amount
@@ -3038,13 +3033,14 @@ def deposit_ad_credit():
             amount=deposit_amount,
             transaction_type=TransactionType.DEPOSIT,
             currency=TransactionCurrency.TON,
-            status=TransactionStatus.COMPLETED,
+            status=TransactionStatus.PENDING if payment_method == 'BLOCKCHAIN' else TransactionStatus.COMPLETED,
             description=f"Deposit of {deposit_amount} TON to ad credit{' via blockchain' if payment_method == 'BLOCKCHAIN' else ''}",
             transaction_id_on_blockchain=transaction_hash if payment_method == 'BLOCKCHAIN' else None
         )
         db.session.add(transaction)
+        db.session.commit()
 
-        # For blockchain transactions, start background verification
+        # For blockchain transactions, verify in background (will reverse if invalid)
         if payment_method == 'BLOCKCHAIN' and transaction_hash:
             import threading
             thread = threading.Thread(
@@ -3054,70 +3050,62 @@ def deposit_ad_credit():
             thread.daemon = True
             thread.start()
 
-        db.session.commit()
-
-        return jsonify({
-            "success": True,
-            "message": "Deposit successful",
-            "user": user.to_dict()
-        })
+            return jsonify({
+                "success": True, 
+                "message": "Deposit received! Verification in progress...", 
+                "user": user.to_dict()
+            })
+        else:
+            return jsonify({
+                "success": True, 
+                "message": "Manual deposit successful", 
+                "user": user.to_dict()
+            })
 
     except Exception as e:
         db.session.rollback()
         print(f"Deposit error: {e}")
-        return jsonify({
-            "success": False,
-            "message": f"Deposit failed: {str(e)}"
-        }), 500
-
+        return jsonify({"success": False, "message": f"Deposit failed: {str(e)}"}), 500
 
 
 def verify_deposit_transaction(user_id: int, transaction_hash: str, expected_amount: Decimal, transaction_id: int):
-    """
-    Background verification for deposit transactions with proper app context
-    """
-    # Create application context for the thread
+    """Background verification for blockchain deposits - reverses if invalid"""
     with app.app_context():
         try:
-            print(f"Verifying deposit transaction {transaction_id} for user {user_id}")
-            
+            print(f"🔍 Verifying deposit transaction {transaction_id} for user {user_id}")
+
             # Check for double-spending first
             if is_double_spent(transaction_hash, transaction_id):
                 print(f"❌ Double-spent transaction detected: {transaction_hash}")
-                mark_transaction_failed(transaction_id, "Double-spent transaction")
                 reverse_invalid_deposit(user_id, expected_amount, transaction_id)
                 return
-            
-            # Use the same verification logic as spin purchases
+
+            # Verify on-chain transaction
             is_valid = verify_ton_transaction_sync_logic(transaction_hash, expected_amount)
-            
+
             if not is_valid:
-                print(f"❌ Invalid deposit TON tx for user {user_id}")
-                mark_transaction_failed(transaction_id, "Transaction verification failed")
+                print(f"❌ Invalid TON transaction: {transaction_hash}")
                 reverse_invalid_deposit(user_id, expected_amount, transaction_id)
                 return
-            
-            print(f"✅ Deposit transaction verified for user {user_id}")
+
+            # Transaction is valid - mark as completed
             mark_transaction_verified(transaction_id)
-            
+            print(f"✅ Deposit transaction verified for user {user_id}")
+
         except Exception as e:
             print(f"Deposit verification error: {e}")
             mark_transaction_failed(transaction_id, f"Verification error: {str(e)}")
 
 
 def is_double_spent(transaction_hash: str, current_transaction_id: int) -> bool:
-    """
-    Check if this blockchain transaction has already been used
-    """
+    """Check if this blockchain transaction hash was already used"""
     try:
-        # Look for any other transaction with the same blockchain hash
         existing_transaction = Transaction.query.filter(
             Transaction.transaction_id_on_blockchain == transaction_hash,
-            Transaction.id != current_transaction_id
+            Transaction.id != current_transaction_id,
+            Transaction.status != TransactionStatus.FAILED  # Ignore failed ones
         ).first()
-
         return existing_transaction is not None
-        
     except Exception as e:
         print(f"Double-spend check error: {e}")
         return False
@@ -3131,20 +3119,21 @@ def mark_transaction_failed(transaction_id: int, reason: str):
             transaction.status = TransactionStatus.FAILED
             transaction.description = f"{transaction.description} - FAILED: {reason}"
             db.session.commit()
-            print(f"Marked transaction {transaction_id} as failed")
+            print(f"❌ Marked transaction {transaction_id} as failed: {reason}")
     except Exception as e:
         print(f"Error marking transaction as failed: {e}")
         db.session.rollback()
 
 
 def mark_transaction_verified(transaction_id: int):
-    """Mark a transaction as verified"""
+    """Mark a transaction as verified and completed"""
     try:
         transaction = Transaction.query.get(transaction_id)
         if transaction:
+            transaction.status = TransactionStatus.COMPLETED
             transaction.description = f"{transaction.description} - VERIFIED"
             db.session.commit()
-            print(f"Marked transaction {transaction_id} as verified")
+            print(f"✅ Marked transaction {transaction_id} as verified")
     except Exception as e:
         print(f"Error marking transaction as verified: {e}")
         db.session.rollback()
@@ -3152,37 +3141,42 @@ def mark_transaction_verified(transaction_id: int):
 
 def reverse_invalid_deposit(user_id: int, amount: Decimal, transaction_id: int):
     """
-    Reverse an invalid deposit transaction
+    Reverse an invalid deposit by deducting the amount and marking transaction failed
     """
     try:
         user = User.query.get(user_id)
         if not user:
+            mark_transaction_failed(transaction_id, "User not found during reversal")
             return
 
         # Only reverse if user has sufficient balance
         if user.ad_credit and user.ad_credit >= amount:
             user.ad_credit -= amount
             
-            # Create reversal transaction
+            # Create reversal transaction record
             reversal = Transaction(
                 user_id=user.id,
                 amount=-amount,
-                transaction_type=TransactionType.WITHDRAWAL,
+                transaction_type=TransactionType.REVERSAL,
                 currency=TransactionCurrency.TON,
                 status=TransactionStatus.COMPLETED,
                 description=f"Reversal of invalid deposit (Original TX: {transaction_id})"
             )
             db.session.add(reversal)
-            db.session.commit()
             
-            print(f"Reversed invalid deposit of {amount} TON for user {user_id}")
+            # Mark original transaction as failed
+            mark_transaction_failed(transaction_id, "Transaction verification failed - reversed")
+            
+            db.session.commit()
+            print(f"↩️ Reversed invalid deposit of {amount} TON for user {user_id}")
         else:
-            print(f"Cannot reverse deposit - insufficient balance for user {user_id}")
+            mark_transaction_failed(transaction_id, "Cannot reverse - insufficient user balance")
+            print(f"⚠️ Cannot reverse deposit - insufficient balance for user {user_id}")
             
     except Exception as e:
         db.session.rollback()
         print(f"Deposit reversal error: {e}")
-
+        mark_transaction_failed(transaction_id, f"Reversal error: {str(e)}")
 
 
 
@@ -4218,3 +4212,61 @@ def reactivate_campaign():
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -139,13 +139,23 @@ const MyPartnerTasksComponent: React.FC<MyPartnerTasksComponentProps> = ({ useri
 const AdBalanceDisplay: React.FC<{
     user: User | null;
     onAddFunds: () => void;
-}> = ({ user, onAddFunds }) => (
+    pendingDeposit?: number;
+}> = ({ user, onAddFunds, pendingDeposit = 0 }) => {
+  const currentBalance = user?.ad_credit || 0;
+  const displayBalance = currentBalance + pendingDeposit;
+  
+  return (
     <section className="bg-slate-800 p-4 rounded-lg flex items-center justify-between mb-6">
         <div>
             <h3 className="text-sm font-semibold text-slate-400">Your Ad Balance</h3>
             <p className="text-2xl font-bold text-white">
-                {(user?.ad_credit || 0).toFixed(2)} <span className="text-lg font-medium text-blue-400">TON</span>
+                {displayBalance.toFixed(2)} <span className="text-lg font-medium text-blue-400">TON</span>
             </p>
+            {pendingDeposit > 0 && (
+              <p className="text-xs text-yellow-400 mt-1">
+                +{pendingDeposit.toFixed(2)} TON pending confirmation
+              </p>
+            )}
         </div>
         <button
             onClick={onAddFunds}
@@ -154,7 +164,8 @@ const AdBalanceDisplay: React.FC<{
             Add Funds
         </button>
     </section>
-);
+  );
+};
 
 const PartnerInstructions: React.FC = () => (
   <div className="bg-blue-900/20 border border-blue-700/50 p-4 rounded-lg mt-4">
@@ -323,6 +334,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
   // Control State
   const [isProcessing, setIsProcessing] = useState(false);
   const [campaignsVersion, setCampaignsVersion] = useState(0);
+  const [pendingDeposit, setPendingDeposit] = useState(0);
 
   useEffect(() => {
     if (selectedTier) {
@@ -360,6 +372,8 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
             ],
           };
 
+          // Immediately update UI with pending deposit
+          setPendingDeposit(amount);
           alert(`Please complete the ${amount} TON deposit in your wallet...`);
 
           tonConnectUI.sendTransaction(transaction)
@@ -368,21 +382,41 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
                 const result = await depositAdCreditAPI(user.id, amount, resultBoc.boc);
 
                 if (result.success) {
-                  setUser(result.user);
+                  // Update user state - handle both response formats
+                  if (result.user) {
+                    setUser(result.user);
+                  } else {
+                    // If no user in response, manually update the balance
+                    setUser({
+                      ...user,
+                      ad_credit: (user.ad_credit || 0) + amount
+                    });
+                  }
+                  
+                  setPendingDeposit(0); // Clear pending deposit
                   alert("Deposit successful! Your balance has been updated.");
                   // Refresh campaigns to reflect any changes
                   setCampaignsVersion(v => v + 1);
                 } else {
+                  // If deposit fails, revert the pending deposit
+                  setPendingDeposit(0);
                   alert("Deposit failed: " + (result.message || "Unknown error"));
                 }
+              } else {
+                // If no BOC (transaction cancelled), revert pending deposit
+                setPendingDeposit(0);
               }
             })
             .catch((error) => {
               console.error('Transaction error:', error);
+              // Revert pending deposit on error
+              setPendingDeposit(0);
               alert("Transaction failed or was cancelled: " + error.message);
             });
         } catch (error) {
           console.error('Deposit initiation error:', error);
+          // Revert pending deposit on error
+          setPendingDeposit(0);
           alert("Failed to initiate deposit");
         }
       } else {
@@ -395,7 +429,7 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
     setCampaignsVersion(v => v + 1);
   };
 
-  const adBalance = user?.ad_credit || 0;
+  const adBalance = (user?.ad_credit || 0) + pendingDeposit;
   const formIsValid = selectedTier && taskLink.startsWith('https://t.me/') && taskLink.length > 15 && selectedLanguages.length > 0;
   const canAfford = adBalance >= totalCost;
   let category = 'Partner';
@@ -474,7 +508,11 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
         
         {activeTab === 'add' ? (
             <>
-              <AdBalanceDisplay user={user} onAddFunds={handleAddFunds} />
+              <AdBalanceDisplay 
+                user={user} 
+                onAddFunds={handleAddFunds} 
+                pendingDeposit={pendingDeposit}
+              />
               <AddPartnerTaskFormComponent 
                   taskLink={taskLink}
                   setTaskLink={setTaskLink}
