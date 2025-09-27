@@ -37,9 +37,9 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 
 
 // const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'https://api.cashubux.com/';
 
-const API_BASE_URL = 'https://51bbe8f62dc0.ngrok-free.app';
+// const API_BASE_URL = 'https://51bbe8f62dc0.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -1646,8 +1646,20 @@ export const reactivateCampaignAPI = async (
 
 
 
-
-
+// Add this to your existing API services
+export const updateUserWalletAddress = async (
+  userId: number,
+  walletAddress: string
+): Promise<{ success: boolean; user?: User; message?: string }> => {
+  return apiFetch<{ success: boolean; user?: User; message?: string }>(
+    `/api/users/${userId}/wallet-address`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ walletAddress }),
+    }
+  );
+};
 
 
 

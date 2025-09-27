@@ -1,11 +1,16 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { User, Transaction, TransactionsFilters, TransactionsResponse } from '../types';
 import { CONVERSION_RATE, MIN_WITHDRAWAL_TON } from '../constants';
-import { fetchWithdrawalTransactions, executeWithdrawal, updateWithdrawalTransaction } from '../services/api';
+import { fetchWithdrawalTransactions, executeWithdrawal, updateWithdrawalTransaction, updateUserWalletAddress } from '../services/api';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
 
-// ... (keep all your existing components: TransactionRow, TransactionsFilters, Pagination)
+// API service function - add this to your ../services/api file
 
+
+
+
+
+// TransactionRow Component
 const TransactionRow: React.FC<{ tx: Transaction }> = React.memo(({ tx }) => {
   const statusColor = {
     COMPLETED: 'text-green-500',
@@ -138,6 +143,14 @@ const Pagination: React.FC<{
   );
 };
 
+
+
+
+
+
+
+
+
 const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void }> = ({ user, setUser }) => {
   const [transactionsData, setTransactionsData] = useState<TransactionsResponse>({
     transactions: [],
@@ -155,6 +168,91 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
+  const [walletConnected, setWalletConnected] = useState<boolean>(false);
+
+  // Track if we've already updated the wallet address for this session
+  const walletAddressUpdatedRef = useRef<string>('');
+
+  // Function to update user's wallet address in backend
+  const updateUserWallet = useCallback(async (walletAddress: string) => {
+    if (!user || !user.id) {
+      console.error('No user found to update wallet address');
+      return;
+    }
+
+    // Check if we've already updated this wallet address for this user in current session
+    if (walletAddressUpdatedRef.current === walletAddress) {
+      return;
+    }
+
+    try {
+      const result = await updateUserWalletAddress(user.id, walletAddress);
+      
+      if (result.success && result.user) {
+        setUser(result.user);
+        walletAddressUpdatedRef.current = walletAddress;
+        console.log('Wallet address updated successfully');
+      } else {
+        console.error('Failed to update wallet address:', result.message);
+      }
+    } catch (error) {
+      console.error('Error updating wallet address:', error);
+    }
+  }, [user, setUser]);
+
+  // Event listener for wallet connection changes
+  useEffect(() => {
+    const handleWalletChange = () => {
+      if (wallet && wallet.account.address && user) {
+        // Check if wallet just connected or address changed
+        if (!walletConnected || walletAddressUpdatedRef.current !== wallet.account.address) {
+          setWalletConnected(true);
+          updateUserWallet(wallet.account.address);
+        }
+      } else if (walletConnected && !wallet) {
+        // Wallet disconnected
+        setWalletConnected(false);
+        walletAddressUpdatedRef.current = ''; // Reset tracking
+      }
+    };
+
+    // Initial check
+    handleWalletChange();
+
+    // Set up interval to check for wallet changes (fallback for some edge cases)
+    const intervalId = setInterval(handleWalletChange, 1000);
+
+    // Cleanup
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [wallet, user, walletConnected, updateUserWallet]);
+
+  // More robust event listener using tonConnectUI events
+  useEffect(() => {
+    const handleStatusChange = (status: any) => {
+      if (status && status.account && status.account.address && user) {
+        const currentAddress = status.account.address;
+        if (walletAddressUpdatedRef.current !== currentAddress) {
+          updateUserWallet(currentAddress);
+        }
+      }
+    };
+
+    // Listen for connection status changes
+    tonConnectUI.onStatusChange(handleStatusChange);
+
+    // Cleanup
+    return () => {
+      tonConnectUI.onStatusChange(handleStatusChange);
+    };
+  }, [tonConnectUI, user, updateUserWallet]);
+
+  // Effect to reset wallet address tracking when user changes
+  useEffect(() => {
+    walletAddressUpdatedRef.current = '';
+    setWalletConnected(false);
+  }, [user?.id]);
 
   // Calculate available TON balance from coins only
   const availableTonBalance = useMemo(() => {
@@ -207,6 +305,11 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const handleWithdraw = async () => {
     if (!wallet || !user || !withdrawAmount) return;
     
+    // Ensure wallet address is updated before proceeding with withdrawal
+    if (wallet.account.address && walletAddressUpdatedRef.current !== wallet.account.address) {
+      await updateUserWallet(wallet.account.address);
+    }
+
     const amount = parseFloat(withdrawAmount);
     const validation = validateWithdrawalAmount(amount);
     
@@ -246,7 +349,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
       }
 
-
       setWithdrawAmount('');
       await loadTransactions();
       alert(`Successfully withdrew ${amount} TON to your wallet!`);
@@ -256,7 +358,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       const errorMessage = error.message || "Transaction was cancelled or failed.";
       
       if (user) {
-        // Revert the balance - we'll need to handle this  in the backend
+        // Revert the balance - we'll need to handle this in the backend
         const revertedUser = { ...user };
         setUser(revertedUser);
       }
@@ -276,9 +378,49 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
   const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
 
+  // Enhanced wallet connection status component
+  const WalletStatus = () => {
+    if (!wallet) {
+      return (
+        <div className="text-center">
+          <p className="text-slate-300">Connect your TON wallet to withdraw funds.</p>
+          <button
+            onClick={() => tonConnectUI.openModal()}
+            className="mt-2 bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
+          >
+            Connect Wallet
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="text-center">
+        <p className="text-slate-300">Connected Wallet:</p>
+        <p className="font-mono text-green-500">{formatAddress(wallet.account.address)}</p>
+        {user?.wallet_address ? (
+          <div className="mt-1">
+            <p className="text-xs text-green-400">
+              ✓ Wallet address saved to your account
+            </p>
+            {user.wallet_address !== wallet.account.address && (
+              <p className="text-xs text-yellow-400 mt-1">
+                ⚠️ Different from previously saved address
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-yellow-400 mt-1">
+            ⏳ Saving wallet address...
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-8">
-      {/* Balance Section - Updated */}
+      {/* Balance Section */}
       <div className="bg-slate-800 p-6 rounded-xl">
         <h2 className="text-2xl font-bold text-white text-center mb-4">Your Balance</h2>
         
@@ -312,14 +454,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
       {/* Withdrawal Form */}
       <div className="bg-slate-800 p-6 rounded-xl space-y-4">
-        {wallet ? (
-          <div className="text-center">
-            <p className="text-slate-300">Connected Wallet:</p>
-            <p className="font-mono text-green-500">{formatAddress(wallet.account.address)}</p>
-          </div>
-        ) : (
-          <p className="text-center text-slate-300">Connect your TON wallet to withdraw funds.</p>
-        )}
+        <WalletStatus />
 
         {/* Amount Input */}
         <div className="space-y-2">
@@ -352,25 +487,18 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
         {/* Action Buttons */}
         <div className="flex space-x-3">
-          {!wallet ? (
-            <button
-              onClick={() => tonConnectUI.openModal()}
-              className="w-full bg-green-500 text-white font-bold py-3 rounded-lg hover:bg-green-600 transition-colors"
-            >
-              Connect Wallet
-            </button>
-          ) : (
+          {wallet && (
             <button
               onClick={() => tonConnectUI.disconnect()}
               className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition-colors"
             >
-              Disconnect
+              Disconnect Wallet
             </button>
           )}
 
           <button
             onClick={handleWithdraw}
-            disabled={!wallet || !withdrawAmount || isWithdrawing}
+            disabled={!wallet || !withdrawAmount || isWithdrawing || !user?.wallet_address}
             className="w-full bg-green-500 text-white font-bold py-3 rounded-lg transition-colors hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {isWithdrawing ? (
@@ -391,6 +519,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         </div>
       </div>
 
+      {/* Rest of your component remains the same */}
       {/* Transaction History */}
       <div>
         <div className="flex justify-between items-center mb-4">

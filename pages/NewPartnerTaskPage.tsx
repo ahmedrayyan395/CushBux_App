@@ -149,7 +149,7 @@ const AdBalanceDisplay: React.FC<{
         <div>
             <h3 className="text-sm font-semibold text-slate-400">Your Ad Balance</h3>
             <p className="text-2xl font-bold text-white">
-                {displayBalance.toFixed(2)} <span className="text-lg font-medium text-blue-400">TON</span>
+                {displayBalance.toFixed(3)} <span className="text-lg font-medium text-blue-400">TON</span>
             </p>
             {pendingDeposit > 0 && (
               <p className="text-xs text-yellow-400 mt-1">

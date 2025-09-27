@@ -4270,3 +4270,24 @@ def reactivate_campaign():
 
 
 
+
+
+@app.route('/api/users/<int:user_id>/wallet-address', methods=['PUT'])
+def update_user_wallet_address(user_id):
+    data = request.get_json()
+    wallet_address = data.get("walletAddress")
+
+    if not wallet_address:
+        return jsonify({"success": False, "message": "Wallet address is required"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    user.wallet_address = wallet_address
+    db.session.commit()
+
+    return jsonify({"success": True, "user": user.to_dict()}), 200
+
+ 
+ 
