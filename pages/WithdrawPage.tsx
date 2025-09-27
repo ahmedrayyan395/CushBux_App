@@ -246,6 +246,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
       }
 
+
       setWithdrawAmount('');
       await loadTransactions();
       alert(`Successfully withdrew ${amount} TON to your wallet!`);
@@ -255,7 +256,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       const errorMessage = error.message || "Transaction was cancelled or failed.";
       
       if (user) {
-        // Revert the balance - we'll need to handle this properly in the backend
+        // Revert the balance - we'll need to handle this  in the backend
         const revertedUser = { ...user };
         setUser(revertedUser);
       }
