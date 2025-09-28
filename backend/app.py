@@ -14,6 +14,7 @@ import string
 # models.py
 import aiohttp
 import jwt
+import requests
 from sqlalchemy.dialects.postgresql import JSONB # Use JSONB for PostgreSQL for better performance
 # from flask_jwt_extended import JWTManager
 from sqlalchemy.sql import func
@@ -1972,33 +1973,7 @@ def get_user_task_status():
 
 # ---------------- Settings Endpoints ---------------- #
 
-@app.route("/settings", methods=["GET"])
-def get_settings():
-    settings = Settings.query.first()
-    if not settings:
-        return jsonify({"error": "Settings not found"}), 404
-    return jsonify({
-        "id": settings.id,
-        "auto_withdrawals": settings.auto_withdrawals
-    })
 
-
-#update the settings 
-@app.route("/settings", methods=["PUT"])
-def update_settings():
-    data = request.get_json()
-    settings = Settings.query.first()
-    if not settings:
-        settings = Settings(auto_withdrawals=data.get("auto_withdrawals", False))
-        db.session.add(settings)
-    else:
-        if "auto_withdrawals" in data:
-            settings.auto_withdrawals = data["auto_withdrawals"]
-    db.session.commit()
-    return jsonify({
-        "id": settings.id,
-        "auto_withdrawals": settings.auto_withdrawals
-    })
 
 
 # ---------------- AdNetwork Endpoints ---------------- #
@@ -3604,74 +3579,6 @@ def verify_ton_transaction_sync_logic(transaction_boc: str, expected_amount: Dec
 
 
 
-# app.py
-# app.py - Update the withdraw_ton endpoint
-@app.route('/api/withdraw/ton', methods=['POST'])
-@jwt_required
-def withdraw_ton():
-    data = request.get_json()
-    amount = data.get("amount")
-    user_id = data.get("userId")
-
-    if not user_id:
-        return jsonify({"success": False, "message": "Missing userId"}), 400
-
-    user = User.query.get(user_id)
-    if not user:
-        return jsonify({"success": False, "message": "User not found"}), 404
-
-    if amount is None or amount <= 0:
-        return jsonify({"success": False, "message": "Invalid withdrawal amount"}), 400
-
-    # Convert amount to Decimal for calculations
-    withdrawal_amount = Decimal(str(amount))
-    conversion_rate = Decimal(str(CONVERSION_RATE))
-
-    # Calculate coins needed for withdrawal
-    coins_balance = Decimal(str(user.coins)) if user.coins else Decimal('0')
-    coins_needed = withdrawal_amount * conversion_rate
-
-    # Check if user has enough coins
-    if coins_needed > coins_balance:
-        return jsonify({
-            "success": False, 
-            "message": f"Insufficient coins balance. You need {coins_needed:.0f} coins for {withdrawal_amount} TON"
-        }), 400
-
-    # Update coins balance - convert to float for SQLite compatibility
-    new_coins_balance = float(coins_balance - coins_needed)
-    user.coins = new_coins_balance
-
-    # Create withdrawal transaction record
-    transaction_description = f"Withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins)"
-
-    transaction = Transaction(
-        user_id=user.id,
-        amount=float(-withdrawal_amount),  # Convert to float for SQLite
-        transaction_type=TransactionType.WITHDRAWAL,
-        currency=TransactionCurrency.TON,
-        status=TransactionStatus.PENDING,
-        description=transaction_description
-    )
-    
-    try:
-        db.session.add(transaction)
-        db.session.commit()
-        
-        return jsonify({
-            "success": True,
-            "message": f"Withdrawal processed for {withdrawal_amount} TON using {coins_needed:.0f} coins",
-            "user": user.to_dict(),
-            "transactionId": transaction.id
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Database error: {e}")
-        return jsonify({
-            "success": False, 
-            "message": "Database error occurred during withdrawal"
-        }), 500
 
 
 @app.route('/api/withdraw/update-transaction', methods=['POST'])
@@ -3694,6 +3601,129 @@ def update_withdrawal_transaction():
     return jsonify({"success": True})
 
 
+
+
+
+# Add these endpoints to your app.py
+
+# Get pending withdrawals for admin
+@app.route('/admin/pending-withdrawals', methods=['GET'])
+@jwt_required
+def get_pending_withdrawals():
+    try:
+        pending_withdrawals = Transaction.query.filter_by(
+            transaction_type=TransactionType.WITHDRAWAL,
+            status=TransactionStatus.PENDING
+        ).order_by(Transaction.created_at.desc()).all()
+        
+        # Include user information with each transaction
+        transactions_with_users = []
+        for tx in pending_withdrawals:
+            tx_dict = tx.to_dict()
+            tx_dict['user'] = tx.user.to_dict() if tx.user else None
+            transactions_with_users.append(tx_dict)
+        
+        return jsonify({
+            'success': True,
+            'transactions': transactions_with_users
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error fetching pending withdrawals: {str(e)}'}), 500
+
+# Approve withdrawal endpoint
+
+# Update the existing withdraw_ton endpoint to check settings
+@app.route('/api/withdraw/ton', methods=['POST'])
+@jwt_required
+def withdraw_ton():
+    data = request.get_json()
+    amount = data.get("amount")
+    user_id = data.get("userId")
+
+    if not user_id:
+        return jsonify({"success": False, "message": "Missing userId"}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    if amount is None or amount <= 0:
+        return jsonify({"success": False, "message": "Invalid withdrawal amount"}), 400
+
+    # Check if user has wallet address
+    if not user.wallet_address:
+        return jsonify({"success": False, "message": "Wallet address not set. Please connect your wallet first."}), 400
+
+    # Convert amount to Decimal for calculations
+    withdrawal_amount = Decimal(str(amount))
+    conversion_rate = Decimal(str(CONVERSION_RATE))
+
+    # Calculate coins needed for withdrawal
+    coins_balance = Decimal(str(user.coins)) if user.coins else Decimal('0')
+    coins_needed = withdrawal_amount * conversion_rate
+
+    # Check if user has enough coins
+    if coins_needed > coins_balance:
+        return jsonify({
+            "success": False, 
+            "message": f"Insufficient coins balance. You need {coins_needed:.0f} coins for {withdrawal_amount} TON"
+        }), 400
+
+    # Get settings to check auto-withdrawal status
+    settings = Settings.query.first()
+    if not settings:
+        settings = Settings(auto_withdrawals=False)
+        db.session.add(settings)
+        db.session.commit()
+
+    # Update coins balance - convert to float for SQLite compatibility
+    new_coins_balance = float(coins_balance - coins_needed)
+    user.coins = new_coins_balance
+
+    # Determine transaction status based on auto-withdrawal setting
+    if settings.auto_withdrawals:
+        status = TransactionStatus.COMPLETED
+        description = f"Auto withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins)"
+        # TODO: If auto-withdrawals are enabled, process the TON transfer immediately here
+    else:
+        status = TransactionStatus.PENDING
+        description = f"Withdrawal of {withdrawal_amount} TON (Converted {coins_needed:.0f} coins) - Pending admin approval"
+
+    # Create withdrawal transaction record
+    transaction = Transaction(
+        user_id=user.id,
+        amount=float(-withdrawal_amount),  # Convert to float for SQLite
+        transaction_type=TransactionType.WITHDRAWAL,
+        currency=TransactionCurrency.TON,
+        status=status,
+        description=description
+    )
+    
+    try:
+        db.session.add(transaction)
+        db.session.commit()
+        
+        response_data = {
+            "success": True,
+            "message": f"Withdrawal request for {withdrawal_amount} TON submitted",
+            "user": user.to_dict(),
+            "transactionId": transaction.id
+        }
+        
+        if not settings.auto_withdrawals:
+            response_data["message"] = f"Withdrawal request for {withdrawal_amount} TON submitted for admin approval"
+            response_data["requiresApproval"] = True
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error: {e}")
+        return jsonify({
+            "success": False, 
+            "message": "Database error occurred during withdrawal"
+        }), 500
 
 
 
@@ -3785,7 +3815,52 @@ def get_withdrawal_transactions():
 
 
 
+# Settings endpoints
+@app.route('/api/settings', methods=['GET'])
 
+def get_settings():
+    try:
+        settings = Settings.query.first()
+        if not settings:
+            # Create default settings if they don't exist
+            settings = Settings(auto_withdrawals=False)
+            db.session.add(settings)
+            db.session.commit()
+        
+        return jsonify({
+            'autoWithdrawals': settings.auto_withdrawals
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'message': f'Error fetching settings: {str(e)}'}), 500
+
+@app.route('/api/settings', methods=['POST'])
+def update_settings():
+    try:
+        data = request.get_json()
+        auto_withdrawals = data.get('autoWithdrawals')
+        
+        if auto_withdrawals is None:
+            return jsonify({'success': False, 'message': 'autoWithdrawals is required'}), 400
+        
+        settings = Settings.query.first()
+        if not settings:
+            settings = Settings(auto_withdrawals=auto_withdrawals)
+            db.session.add(settings)
+        else:
+            settings.auto_withdrawals = auto_withdrawals
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Settings updated successfully',
+            'autoWithdrawals': settings.auto_withdrawals
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error updating settings: {str(e)}'}), 500
 
 
 
@@ -4291,3 +4366,211 @@ def update_user_wallet_address(user_id):
 
  
  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def send_ton_via_tonconsole(to_address: str, amount: float, memo: str = "") -> str:
+    """
+    Send TON using TonConsole API with better error handling
+    """
+    try:
+        api_key = 'AG7BCGUSVI2VF7QAAAAG23MTFLRODHOP7EDRFM2NPLIQZUDCDFDQSHC3SNDNJD7ZBJWA5VI'
+        project_id = '1652434182'
+        admin_wallet = 'UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0'
+        
+        if not all([api_key, project_id, admin_wallet]):
+            raise Exception("Missing TonConsole configuration")
+        
+        # TonConsole API endpoint
+        url = f"https://tonconsole.com/api/project/{project_id}/sendTransaction"
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'X-API-Key': api_key
+        }
+        
+        # Convert amount to nanoTON (1 TON = 1,000,000,000 nanoTON)
+        amount_nano = int(amount * 1_000_000_000)
+        
+        payload = {
+            'from': admin_wallet,
+            'to': to_address,
+            'amount': amount_nano,
+            'message': memo,
+            'waitForTransaction': True,
+            'timeout': 30
+        }
+        
+        print(f"Sending TON via TonConsole: {amount} TON from {admin_wallet} to {to_address}")
+        print(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        
+        print(f"Response status: {response.status_code}")
+        print(f"Response headers: {dict(response.headers)}")
+        print(f"Response text: {response.text}")
+        
+        # Check if response is empty
+        if not response.text.strip():
+            raise Exception("Empty response from TonConsole API")
+        
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                print(f"TonConsole response JSON: {data}")
+                
+                if data.get('success'):
+                    transaction_hash = data.get('transactionHash')
+                    if transaction_hash:
+                        return transaction_hash
+                    else:
+                        raise Exception("No transaction hash in response")
+                else:
+                    error_msg = data.get('error', 'Unknown error from TonConsole')
+                    raise Exception(f"TonConsole API error: {error_msg}")
+                    
+            except json.JSONDecodeError as e:
+                raise Exception(f"Invalid JSON response: {response.text}")
+        else:
+            # Try to parse error response
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', response.text)
+            except:
+                error_msg = response.text
+                
+            raise Exception(f"TonConsole request failed (HTTP {response.status_code}): {error_msg}")
+            
+    except requests.exceptions.Timeout:
+        raise Exception("TonConsole API timeout - transaction may still be processing")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network error: {str(e)}")
+    except Exception as e:
+        raise Exception(f"TonConsole transfer failed: {str(e)}")
+
+# Updated approve endpoint with better error handling
+@app.route('/api/admin/withdrawals/<int:transaction_id>/approve', methods=['POST'])
+def approve_withdrawal(transaction_id):
+    try:
+        transaction = Transaction.query.get_or_404(transaction_id)
+        
+        if transaction.transaction_type != TransactionType.WITHDRAWAL:
+            return jsonify({'success': False, 'message': 'Transaction is not a withdrawal'}), 400
+            
+        if transaction.status != TransactionStatus.PENDING:
+            return jsonify({'success': False, 'message': 'Transaction is not pending approval'}), 400
+        
+        # Get user to get their wallet address
+        user = User.query.get(transaction.user_id)
+        if not user or not user.wallet_address:
+            return jsonify({'success': False, 'message': 'User wallet address not found'}), 400
+        
+        # Get the withdrawal amount (it's negative in the transaction, so we take absolute value)
+        withdrawal_amount = abs(transaction.amount)
+        
+        # Validate withdrawal amount
+        if withdrawal_amount <= 0:
+            return jsonify({'success': False, 'message': 'Invalid withdrawal amount'}), 400
+        
+        # Validate wallet address format
+        wallet_address = user.wallet_address.strip()
+        if not wallet_address.startswith(('EQ', 'UQ', '0:')):
+            return jsonify({'success': False, 'message': 'Invalid wallet address format'}), 400
+        
+        try:
+            print(f"Approving withdrawal: {withdrawal_amount} TON to {wallet_address}")
+            
+            # Send actual TON transfer via TonConsole
+            transaction_hash = send_ton_via_tonconsole(
+                to_address=wallet_address,
+                amount=withdrawal_amount,
+                memo=f"Withdrawal #{transaction_id}"
+            )
+            
+            print(f"TON transfer successful. Transaction hash: {transaction_hash}")
+            
+            # Update transaction status
+            transaction.status = TransactionStatus.COMPLETED
+            transaction.transaction_id_on_blockchain = transaction_hash
+            transaction.description = f"Withdrawal of {withdrawal_amount} TON approved and sent to {wallet_address[:8]}...{wallet_address[-8:]}"
+            
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Withdrawal approved and {withdrawal_amount} TON sent to user wallet',
+                'transaction_hash': transaction_hash,
+                'transaction': transaction.to_dict()
+            }), 200
+            
+        except Exception as transfer_error:
+            print(f"TON transfer failed: {str(transfer_error)}")
+            
+            # If transfer fails, mark as failed
+            transaction.status = TransactionStatus.FAILED
+            transaction.description = f"TON transfer failed: {str(transfer_error)}"
+            db.session.commit()
+            
+            return jsonify({
+                'success': False, 
+                'message': f'Ton transfer failed: {str(transfer_error)}'
+            }), 500
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error approving withdrawal: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error approving withdrawal: {str(e)}'}), 500
+
+
+
+
+# Updated reject endpoint (no changes needed here)
+@app.route('/api/admin/withdrawals/<int:transaction_id>/reject', methods=['POST'])
+def reject_withdrawal(transaction_id):
+    try:
+        transaction = Transaction.query.get_or_404(transaction_id)
+        
+        if transaction.transaction_type != TransactionType.WITHDRAWAL:
+            return jsonify({'success': False, 'message': 'Transaction is not a withdrawal'}), 400
+            
+        if transaction.status != TransactionStatus.PENDING:
+            return jsonify({'success': False, 'message': 'Transaction is not pending approval'}), 400
+        
+        # Get the withdrawal amount to calculate coin refund
+        withdrawal_amount = abs(transaction.amount)
+        coins_refund = int(withdrawal_amount * CONVERSION_RATE)
+        
+        # Refund the coins to user
+        user = User.query.get(transaction.user_id)
+        if user:
+            user.coins += coins_refund
+        
+        # Update transaction status
+        transaction.status = TransactionStatus.FAILED
+        transaction.description = f"Withdrawal rejected by admin - {coins_refund} coins refunded"
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Withdrawal rejected and {coins_refund} coins refunded to user',
+            'transaction': transaction.to_dict()
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error rejecting withdrawal: {str(e)}'}), 500

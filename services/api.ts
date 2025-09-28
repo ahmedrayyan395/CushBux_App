@@ -36,10 +36,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
-
-// const API_BASE_URL = 'https://51bbe8f62dc0.ngrok-free.app';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
+// 
+// const API_BASE_URL = 'https://76eb190d6536.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -582,16 +582,15 @@ export const getUserTaskStatus = async (
 
 
 // === SETTINGS ===
+// In services/api.ts - Update both functions
 export const fetchSettings = async (): Promise<{ autoWithdrawals: boolean }> => {
-  return apiFetch('/settings'); // GET /api/settings
+  return await apiFetch<{ autoWithdrawals: boolean }>('/api/settings'); // or '/api/admin/settings'
 };
 
-export const updateSettings = async (
-  newSettings: Partial<{ autoWithdrawals: boolean }>
-): Promise<{ success: boolean; settings: { autoWithdrawals: boolean } }> => {
-  return apiFetch('/settings', {
-    method: 'PUT',
-    body: JSON.stringify(newSettings),
+export const updateSettings = async (settings: { autoWithdrawals: boolean }): Promise<any> => {
+  return await apiFetch('/api/settings', { // Make sure this matches the backend
+    method: 'POST',
+    body: JSON.stringify(settings),
   });
 };
 
@@ -1664,7 +1663,27 @@ export const updateUserWalletAddress = async (
 
 
 
+// Add to services/api.ts
 
+// Admin functions for withdrawal management
+export const fetchPendingWithdrawals = async (): Promise<{success: boolean; transactions: Transaction[]}> => {
+  return await apiFetch<{success: boolean; transactions: Transaction[]}>('/admin/pending-withdrawals');
+};
+
+
+
+
+export const approveWithdrawal = async (transactionId: number): Promise<{success: boolean; message: string; transaction: Transaction}> => {
+  return await apiFetch(`/api/admin/withdrawals/${transactionId}/approve`, { // Add /api prefix
+    method: 'POST',
+  });
+};
+
+export const rejectWithdrawal = async (transactionId: number): Promise<{success: boolean; message: string; transaction: Transaction}> => {
+  return await apiFetch(`/api/admin/withdrawals/${transactionId}/reject`, { // Add /api prefix
+    method: 'POST',
+  });
+};
 
 
 

@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { User, Transaction, TransactionsFilters, TransactionsResponse } from '../types';
 import { CONVERSION_RATE, MIN_WITHDRAWAL_TON } from '../constants';
-import { fetchWithdrawalTransactions, executeWithdrawal, updateWithdrawalTransaction, updateUserWalletAddress } from '../services/api';
+import { 
+  fetchWithdrawalTransactions, 
+  executeWithdrawal, 
+  updateWithdrawalTransaction, 
+  updateUserWalletAddress,
+  fetchSettings 
+} from '../services/api';
 import { useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
-
-// API service function - add this to your ../services/api file
-
-
-
-
 
 // TransactionRow Component
 const TransactionRow: React.FC<{ tx: Transaction }> = React.memo(({ tx }) => {
@@ -143,14 +143,6 @@ const Pagination: React.FC<{
   );
 };
 
-
-
-
-
-
-
-
-
 const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void }> = ({ user, setUser }) => {
   const [transactionsData, setTransactionsData] = useState<TransactionsResponse>({
     transactions: [],
@@ -169,9 +161,27 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const [tonConnectUI] = useTonConnectUI();
   const wallet = useTonWallet();
   const [walletConnected, setWalletConnected] = useState<boolean>(false);
+  const [settings, setSettings] = useState<{ autoWithdrawals: boolean } | null>(null);
 
   // Track if we've already updated the wallet address for this session
   const walletAddressUpdatedRef = useRef<string>('');
+
+  // Load settings on component mount
+ useEffect(() => {
+  const loadSettings = async () => {
+    try {
+      const settingsData = await fetchSettings();
+      setSettings(settingsData);
+      console.log('Loaded settings:', settingsData); // Debug log
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      // Set default if failed to load
+      setSettings({ autoWithdrawals: false });
+    }
+  };
+  loadSettings();
+}, []);
+
 
   // Function to update user's wallet address in backend
   const updateUserWallet = useCallback(async (walletAddress: string) => {
@@ -329,29 +339,37 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
       setUser(result.user);
 
-      const transaction = {
-        validUntil: Math.floor(Date.now() / 1000) + 300,
-        messages: [
-          {
-            address: wallet.account.address,
-            amount: Math.round(amount * 1e9).toString(),
-          },
-        ],
-      };
+      // Only send blockchain transaction if auto-withdrawals are enabled
+      if (settings?.autoWithdrawals) {
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 300,
+          messages: [
+            {
+              address: wallet.account.address,
+              amount: Math.round(amount * 1e9).toString(),
+            },
+          ],
+        };
 
-      const txResponse = await tonConnectUI.sendTransaction(transaction);
+        const txResponse = await tonConnectUI.sendTransaction(transaction);
 
-      if (!txResponse?.boc) {
-        throw new Error("Transaction failed: no response from wallet.");
+        if (!txResponse?.boc) {
+          throw new Error("Transaction failed: no response from wallet.");
+        }
+
+        if (result.transactionId) {
+          await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
+        }
+
+        setWithdrawAmount('');
+        await loadTransactions();
+        alert(`Successfully withdrew ${amount} TON to your wallet!`);
+      } else {
+        // Manual approval mode - just show success message for submission
+        setWithdrawAmount('');
+        await loadTransactions();
+        alert(`Withdrawal request for ${amount} TON submitted for admin approval! You will receive your TON once approved.`);
       }
-
-      if (result.transactionId) {
-        await updateWithdrawalTransaction(result.transactionId, txResponse.boc);
-      }
-
-      setWithdrawAmount('');
-      await loadTransactions();
-      alert(`Successfully withdrew ${amount} TON to your wallet!`);
 
     } catch (error: any) {
       console.error("Withdrawal failed:", error);
@@ -456,6 +474,29 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       <div className="bg-slate-800 p-6 rounded-xl space-y-4">
         <WalletStatus />
 
+        {/* Approval Status Notice */}
+        {settings && (
+          <div className={`p-4 rounded-xl ${
+            settings.autoWithdrawals 
+              ? 'bg-green-500/10 border border-green-500/20' 
+              : 'bg-blue-500/10 border border-blue-500/20'
+          }`}>
+            <h3 className={`font-bold mb-2 ${
+              settings.autoWithdrawals ? 'text-green-400' : 'text-blue-400'
+            }`}>
+              {settings.autoWithdrawals ? '✓ Automatic Withdrawals' : '⏳ Manual Approval Required'}
+            </h3>
+            <p className={`text-sm ${
+              settings.autoWithdrawals ? 'text-green-300' : 'text-blue-300'
+            }`}>
+              {settings.autoWithdrawals 
+                ? "Withdrawals are processed automatically. You'll receive TON immediately after confirmation."
+                : "Automatic withdrawals are currently disabled. Your withdrawal requests will require manual approval by an administrator. You will be notified once approved."
+              }
+            </p>
+          </div>
+        )}
+
         {/* Amount Input */}
         <div className="space-y-2">
           <label className="text-slate-300 text-sm">Withdrawal Amount (TON)</label>
@@ -504,10 +545,10 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
             {isWithdrawing ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                Processing...
+                {settings?.autoWithdrawals ? 'Processing...' : 'Submitting...'}
               </>
             ) : (
-              'Withdraw TON'
+              settings?.autoWithdrawals ? 'Withdraw TON' : 'Submit for Approval'
             )}
           </button>
         </div>
@@ -519,7 +560,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         </div>
       </div>
 
-      {/* Rest of your component remains the same */}
       {/* Transaction History */}
       <div>
         <div className="flex justify-between items-center mb-4">
@@ -564,6 +604,12 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
           Withdrawals are now processed using coins only. Your coins will be automatically converted to TON.
           Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins.
         </p>
+        {!settings?.autoWithdrawals && (
+          <p className="text-yellow-300 text-sm mt-2">
+            ⏳ <strong>Manual Approval Mode:</strong> Your withdrawal requests will be reviewed by an administrator. 
+            You will receive your TON once approved.
+          </p>
+        )}
       </div>
     </div>
   );
