@@ -235,6 +235,7 @@ class TransactionStatus(enum.Enum):
     COMPLETED = 'Completed'
     PENDING = 'Pending'
     FAILED = 'Failed'
+    PROCESSING='PROCESSING'
 
 
 class Transaction(db.Model):
@@ -4379,161 +4380,17 @@ def update_user_wallet_address(user_id):
 
 
 
+# file: ton_send_multi_provider.py
+import os
+import json
+import requests
+from flask import Flask, jsonify
+from tonsdk.contract.wallet import Wallets, WalletVersionEnum
+from tonsdk.utils import to_nano, bytes_to_b64str
 
 
 
 
-def send_ton_via_tonconsole(to_address: str, amount: float, memo: str = "") -> str:
-    """
-    Send TON using TonConsole API with better error handling
-    """
-    try:
-        api_key = 'AG7BCGUSVI2VF7QAAAAG23MTFLRODHOP7EDRFM2NPLIQZUDCDFDQSHC3SNDNJD7ZBJWA5VI'
-        project_id = '1652434182'
-        admin_wallet = 'UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0'
-        
-        if not all([api_key, project_id, admin_wallet]):
-            raise Exception("Missing TonConsole configuration")
-        
-        # TonConsole API endpoint
-        url = f"https://tonconsole.com/api/project/{project_id}/sendTransaction"
-        
-        headers = {
-            'Content-Type': 'application/json',
-            'X-API-Key': api_key
-        }
-        
-        # Convert amount to nanoTON (1 TON = 1,000,000,000 nanoTON)
-        amount_nano = int(amount * 1_000_000_000)
-        
-        payload = {
-            'from': admin_wallet,
-            'to': to_address,
-            'amount': amount_nano,
-            'message': memo,
-            'waitForTransaction': True,
-            'timeout': 30
-        }
-        
-        print(f"Sending TON via TonConsole: {amount} TON from {admin_wallet} to {to_address}")
-        print(f"Payload: {json.dumps(payload, indent=2)}")
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        
-        print(f"Response status: {response.status_code}")
-        print(f"Response headers: {dict(response.headers)}")
-        print(f"Response text: {response.text}")
-        
-        # Check if response is empty
-        if not response.text.strip():
-            raise Exception("Empty response from TonConsole API")
-        
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                print(f"TonConsole response JSON: {data}")
-                
-                if data.get('success'):
-                    transaction_hash = data.get('transactionHash')
-                    if transaction_hash:
-                        return transaction_hash
-                    else:
-                        raise Exception("No transaction hash in response")
-                else:
-                    error_msg = data.get('error', 'Unknown error from TonConsole')
-                    raise Exception(f"TonConsole API error: {error_msg}")
-                    
-            except json.JSONDecodeError as e:
-                raise Exception(f"Invalid JSON response: {response.text}")
-        else:
-            # Try to parse error response
-            try:
-                error_data = response.json()
-                error_msg = error_data.get('error', response.text)
-            except:
-                error_msg = response.text
-                
-            raise Exception(f"TonConsole request failed (HTTP {response.status_code}): {error_msg}")
-            
-    except requests.exceptions.Timeout:
-        raise Exception("TonConsole API timeout - transaction may still be processing")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Network error: {str(e)}")
-    except Exception as e:
-        raise Exception(f"TonConsole transfer failed: {str(e)}")
-
-# Updated approve endpoint with better error handling
-@app.route('/api/admin/withdrawals/<int:transaction_id>/approve', methods=['POST'])
-def approve_withdrawal(transaction_id):
-    try:
-        transaction = Transaction.query.get_or_404(transaction_id)
-        
-        if transaction.transaction_type != TransactionType.WITHDRAWAL:
-            return jsonify({'success': False, 'message': 'Transaction is not a withdrawal'}), 400
-            
-        if transaction.status != TransactionStatus.PENDING:
-            return jsonify({'success': False, 'message': 'Transaction is not pending approval'}), 400
-        
-        # Get user to get their wallet address
-        user = User.query.get(transaction.user_id)
-        if not user or not user.wallet_address:
-            return jsonify({'success': False, 'message': 'User wallet address not found'}), 400
-        
-        # Get the withdrawal amount (it's negative in the transaction, so we take absolute value)
-        withdrawal_amount = abs(transaction.amount)
-        
-        # Validate withdrawal amount
-        if withdrawal_amount <= 0:
-            return jsonify({'success': False, 'message': 'Invalid withdrawal amount'}), 400
-        
-        # Validate wallet address format
-        wallet_address = user.wallet_address.strip()
-        if not wallet_address.startswith(('EQ', 'UQ', '0:')):
-            return jsonify({'success': False, 'message': 'Invalid wallet address format'}), 400
-        
-        try:
-            print(f"Approving withdrawal: {withdrawal_amount} TON to {wallet_address}")
-            
-            # Send actual TON transfer via TonConsole
-            transaction_hash = send_ton_via_tonconsole(
-                to_address=wallet_address,
-                amount=withdrawal_amount,
-                memo=f"Withdrawal #{transaction_id}"
-            )
-            
-            print(f"TON transfer successful. Transaction hash: {transaction_hash}")
-            
-            # Update transaction status
-            transaction.status = TransactionStatus.COMPLETED
-            transaction.transaction_id_on_blockchain = transaction_hash
-            transaction.description = f"Withdrawal of {withdrawal_amount} TON approved and sent to {wallet_address[:8]}...{wallet_address[-8:]}"
-            
-            db.session.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': f'Withdrawal approved and {withdrawal_amount} TON sent to user wallet',
-                'transaction_hash': transaction_hash,
-                'transaction': transaction.to_dict()
-            }), 200
-            
-        except Exception as transfer_error:
-            print(f"TON transfer failed: {str(transfer_error)}")
-            
-            # If transfer fails, mark as failed
-            transaction.status = TransactionStatus.FAILED
-            transaction.description = f"TON transfer failed: {str(transfer_error)}"
-            db.session.commit()
-            
-            return jsonify({
-                'success': False, 
-                'message': f'Ton transfer failed: {str(transfer_error)}'
-            }), 500
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"Error approving withdrawal: {str(e)}")
-        return jsonify({'success': False, 'message': f'Error approving withdrawal: {str(e)}'}), 500
 
 
 
@@ -4574,3 +4431,293 @@ def reject_withdrawal(transaction_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error rejecting withdrawal: {str(e)}'}), 500
+
+
+
+
+import requests
+import os
+import hashlib
+import time
+from flask import jsonify, request
+from app import app, db
+
+# Configuration
+MNEMONIC = "shiver element initial sea behind across bus chapter dose earth write foil loyal employ city daughter cluster verify cradle citizen place burden brass fossil"
+QUICKNODE_BASE = "https://flashy-hardworking-sound.ton-mainnet.quiknode.pro/0b8a7ecf4d4898861d6da8ca6097e1d5bfa2718a/"
+
+def get_wallet_address():
+    """Return the admin wallet address (replace with your own)."""
+    return "UQDgvglKX5B_l9BvW9P7KB8LDgmrR2iRfwElIeDS1nMFfi7c"
+
+def check_wallet_balance():
+    """Check wallet balance using QuickNode."""
+    try:
+        wallet_address = get_wallet_address()
+        url = QUICKNODE_BASE.rstrip("/") + "/getWalletInformation"
+
+        print(f"Checking wallet balance for: {wallet_address}")
+        response = requests.get(url, params={"address": wallet_address}, timeout=20)
+
+        if response.status_code == 200:
+            data = response.json()
+            result = data.get('result', {})
+
+            balance_nano = int(result.get('balance', 0))
+            balance_ton = balance_nano / 1_000_000_000
+            is_activated = result.get('account_state') != 'uninitialized'
+
+            print(f"Wallet balance: {balance_ton} TON, Activated: {is_activated}")
+            return is_activated, wallet_address, balance_ton
+        else:
+            print(f"Error checking balance: {response.status_code} - {response.text}")
+            return False, wallet_address, 0
+
+    except Exception as e:
+        print(f"Error in check_wallet_balance: {e}")
+        return False, get_wallet_address(), 0
+
+
+
+
+
+
+
+
+import requests
+import base64
+import hashlib
+import time
+from tonsdk.utils import to_nano
+from tonsdk.contract.wallet import Wallets, WalletVersionEnum
+
+# Configuration
+MNEMONIC = "shiver element initial sea behind across bus chapter dose earth write foil loyal employ city daughter cluster verify cradle citizen place burden brass fossil"
+QUICKNODE_BASE = "https://flashy-hardworking-sound.ton-mainnet.quiknode.pro/0b8a7ecf4d4898861d6da8ca6097e1d5bfa2718a/"
+
+def send_ton_real(to_address: str, amount_ton: float, memo: str = "") -> str:
+    """
+    Real TON transfer implementation with proper wallet handling
+    """
+    try:
+        print("🚀 STARTING REAL TON TRANSFER")
+        print(f"Recipient: {to_address}")
+        print(f"Amount: {amount_ton} TON")
+        print(f"Memo: {memo}")
+        
+        # 1. Create wallet from mnemonic
+        mnemonics = MNEMONIC.split()
+        print(f"Creating wallet from mnemonic ({len(mnemonics)} words)")
+        
+        # Wallets.from_mnemonics returns a tuple: (mnemonics, pub_k, priv_k, wallet)
+        result = Wallets.from_mnemonics(
+            mnemonics,
+            WalletVersionEnum.v4r2,  # Using v4r2 instead of v3r2
+            workchain=0
+        )
+        
+        print(f"Wallet creation result type: {type(result)}")
+        print(f"Result length: {len(result) if hasattr(result, '__len__') else 'N/A'}")
+        
+        # Extract wallet from tuple (mnemonics, pub_k, priv_k, wallet)
+        if isinstance(result, (list, tuple)) and len(result) >= 4:
+            wallet = result[3]  # wallet is the 4th element
+            print("✅ Extracted wallet from tuple")
+        else:
+            raise TypeError(f"Unexpected wallet result format: {type(result)}")
+        
+        # 2. Get admin wallet address
+        if hasattr(wallet, "address"):
+            admin_address = wallet.address.to_string(True, True, True)
+            print(f"✅ Admin wallet address: {admin_address}")
+        else:
+            raise AttributeError("Wallet object doesn't have 'address' attribute")
+        
+        # 3. Check wallet balance and get seqno
+        url = QUICKNODE_BASE.rstrip("/") + "/getWalletInformation"
+        print(f"🔍 Checking wallet info: {admin_address}")
+        
+        resp = requests.get(url, params={"address": admin_address}, timeout=30)
+        resp.raise_for_status()
+        
+        wallet_info = resp.json()
+        print(f"Wallet info response: {wallet_info}")
+        
+        result_data = wallet_info.get("result", {})
+        
+        # Check if wallet is activated
+        if result_data.get('account_state') == 'uninitialized':
+            raise Exception(f"Wallet not activated. Please send at least 0.1 TON to: {admin_address}")
+        
+        # Check balance
+        balance_nano = int(result_data.get('balance', 0))
+        balance_ton = balance_nano / 1_000_000_000
+        
+        if balance_ton < amount_ton:
+            raise Exception(f"Insufficient balance. Available: {balance_ton:.6f} TON, Required: {amount_ton:.6f} TON")
+        
+        # Get seqno
+        seqno = result_data.get("seqno", 0)
+        print(f"✅ Wallet seqno: {seqno}, Balance: {balance_ton:.6f} TON")
+        
+        # 4. Create transfer message
+        amount_nano = to_nano(amount_ton, "ton")
+        print(f"💰 Amount in nanoTON: {amount_nano}")
+        
+        print("📝 Creating transfer message...")
+        transfer = wallet.create_transfer_message(
+            to_addr=to_address,
+            amount=amount_nano,
+            seqno=seqno,
+            payload=memo.encode() if memo else None
+        )
+        print("✅ Transfer message created")
+        
+        # 5. Serialize to BOC (base64)
+        print("🔧 Serializing to BOC...")
+        boc_bytes = transfer["message"].to_boc(False)
+        boc = base64.b64encode(boc_bytes).decode()
+        print(f"✅ BOC created, length: {len(boc)}")
+        
+        # 6. Send transaction
+        send_url = QUICKNODE_BASE.rstrip("/") + "/sendBoc"
+        print("📤 Sending transaction to blockchain...")
+        
+        response = requests.post(send_url, json={"boc": boc}, timeout=30)
+        response.raise_for_status()
+        
+        result = response.json()
+        print(f"📥 Blockchain response: {result}")
+        
+        tx_hash = result.get("result", "")
+        
+        # Ensure it's stored as a string
+        if isinstance(tx_hash, dict):
+            tx_hash = json.dumps(tx_hash)
+        
+        if not tx_hash:
+            raise Exception("No transaction hash in response")
+
+
+
+
+        if not tx_hash:
+            # Some APIs return hash in different format
+            tx_hash = result.get("hash", "")
+        
+        if not tx_hash:
+            raise Exception("No transaction hash in response")
+        
+        print(f"✅ TRANSACTION SUCCESSFUL!")
+        print(f"📄 Transaction hash: {tx_hash}")
+        print(f"💸 Sent {amount_ton} TON to {to_address}")
+        
+        return tx_hash
+        
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network error: {str(e)}")
+    except Exception as e:
+        raise Exception(f"TON transfer failed: {str(e)}")
+
+
+  
+
+
+
+
+# ---------------------------
+# Flask endpoints
+# ---------------------------
+
+@app.route('/api/admin/withdrawals/<int:transaction_id>/approve', methods=['POST'])
+def approve_withdrawal(transaction_id):
+    try:
+        transaction = Transaction.query.get_or_404(transaction_id)
+
+        if transaction.transaction_type != TransactionType.WITHDRAWAL:
+            return jsonify({'success': False, 'message': 'Not a withdrawal'}), 400
+
+        if transaction.status != TransactionStatus.PENDING:
+            return jsonify({'success': False, 'message': 'Not pending approval'}), 400
+
+        user = User.query.get(transaction.user_id)
+        if not user or not user.wallet_address:
+            return jsonify({'success': False, 'message': 'User wallet not found'}), 400
+
+        withdrawal_amount = abs(transaction.amount)
+        wallet_address = user.wallet_address.strip()
+
+        if withdrawal_amount <= 0:
+            return jsonify({'success': False, 'message': 'Invalid amount'}), 400
+
+        print(f"Approving withdrawal: {withdrawal_amount} TON to {wallet_address}")
+
+        # Check admin wallet balance
+        is_activated, admin_address, balance = check_wallet_balance()
+        if not is_activated:
+            return jsonify({
+                'success': False,
+                'message': f'Admin wallet not activated. Please send at least 0.1 TON to: {admin_address}'
+            }), 400
+
+        print(f"Admin wallet balance: {balance} TON")
+
+        if balance < withdrawal_amount:
+            return jsonify({
+                'success': False,
+                'message': f'Insufficient balance. Available: {balance:.6f} TON, Required: {withdrawal_amount:.6f} TON'
+            }), 400
+
+        if not wallet_address.startswith(('EQ', 'UQ', '0:')):
+            return jsonify({'success': False, 'message': 'Invalid recipient wallet format'}), 400
+
+        # Send TON (mocked)
+        transaction_hash = send_ton_real(
+            to_address=wallet_address,
+            amount_ton=withdrawal_amount,
+            memo=f"Withdrawal #{transaction_id}"
+        )
+
+        print(f"TON transfer successful. Transaction hash: {transaction_hash}")
+
+        # Update transaction
+        transaction.status = TransactionStatus.COMPLETED
+        transaction.transaction_id_on_blockchain = transaction_hash
+        transaction.description = f"Withdrawal of {withdrawal_amount} TON sent to user wallet"
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Withdrawal approved and {withdrawal_amount} TON sent',
+            'transaction_hash': transaction_hash,
+            'transaction': transaction.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Approve error: {str(e)}")
+
+        try:
+            transaction.status = TransactionStatus.FAILED
+            transaction.description = f"Failed: {str(e)}"
+            db.session.commit()
+        except:
+            db.session.rollback()
+
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/wallet-status', methods=['GET'])
+def wallet_status():
+    """Check admin wallet status."""
+    try:
+        is_activated, address, balance = check_wallet_balance()
+        return jsonify({
+            'success': True,
+            'activated': is_activated,
+            'address': address,
+            'balance': balance,
+            'message': f"Wallet is {'activated' if is_activated else 'not activated'} with {balance:.6f} TON"
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
