@@ -95,7 +95,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
   const claimableEarnings = user?.referral_earnings || 0;
   const referralLink = referralInfo?.referral_link || 'https://t.me/CashUBux_bot?start=ref_loading';
   const todayInvites = referralInfo?.today_invites || 0;
-  const maxDailyInvites = referralInfo?.max_daily_invites || 50;
+  const maxDailyInvites = referralInfo?.max_daily_invites || 100000;
   const totalFriends = friends?.length || 0;
   const totalEarnings = referralInfo?.total_earnings || 0;
 
@@ -148,7 +148,7 @@ const FriendsPage: React.FC<{ user: User | null, setUser: (user: User) => void }
         <div className="bg-slate-800 p-4 rounded-xl text-center">
           <div className="w-6 h-6 text-purple-400 mx-auto mb-2">{ICONS.calendar}</div>
           <p className="text-slate-300 text-sm">Today's Invites</p>
-          <p className="text-2xl font-bold text-white">{todayInvites}/{maxDailyInvites}</p>
+          <p className="text-2xl font-bold text-white">{todayInvites}</p>
         </div>
         
         <div className="bg-slate-800 p-4 rounded-xl text-center">

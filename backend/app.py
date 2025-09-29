@@ -1225,55 +1225,6 @@ def get_my_partner_campaigns():
 
 
 
-@app.route('/usercampaigns/unclaimed', methods=['GET'])
-@jwt_required
-def get_unclaimed_campaigns():
-    """Return all campaigns that the current user hasn't completed yet and where completions haven't reached the goal, filtered by user's language."""
-    try:
-        # current_user_id = current_user().id
-        user_id = request.args.get('user_id', type=int)
-    
-        if not user_id:
-            return jsonify({"success": False, "message": "Missing user_id"}), 400
-
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({"success": False, "message": "User not found"}), 404
-
-        # Get the current user's language preference
-        current_user_obj = User.query.get(user_id)
-        user_language = current_user_obj.language_code if current_user_obj else 'en'
-
-        # Single query using LEFT JOIN to exclude completed campaigns AND campaigns that reached goal
-        unclaimed_campaigns = db.session.query(UserCampaign).outerjoin(
-            user_task_completion,
-            (user_task_completion.c.campaign_id == UserCampaign.id) & 
-            (user_task_completion.c.user_id == user_id) &
-            (user_task_completion.c.completed_at.isnot(None))
-        ).filter(
-            user_task_completion.c.campaign_id.is_(None),  # No completed records exist
-            UserCampaign.completions < UserCampaign.goal   # Exclude campaigns that reached goal
-        ).all()
-
-        # Filter campaigns by language
-        filtered_campaigns = []
-        for campaign in unclaimed_campaigns:
-            # If campaign has no language restrictions or user's language is included
-            if (not campaign.langs or 
-                campaign.langs == [] or 
-                campaign.langs == [''] or 
-                user_language in campaign.langs):
-                filtered_campaigns.append(campaign)
-        
-        # Sort by ID
-        filtered_campaigns.sort(key=lambda x: x.id)
-
-        return jsonify([c.to_dict() for c in filtered_campaigns]), 200
-
-    except Exception as e:
-        print(f"Error fetching unclaimed campaigns: {e}")
-        return jsonify([]), 200
-
 
 
 @app.route('/campaigns', methods=['GET'])
@@ -2055,35 +2006,141 @@ def get_tasks():
 
 
 
-# GET daily tasks that are NOT completed by a specific user (SQL approach)
+
+
+
+@app.route('/usercampaigns/unclaimed', methods=['GET'])
+@jwt_required
+def get_unclaimed_campaigns():
+    """Return all campaigns that the current user hasn't completed yet and where completions haven't reached the goal, filtered by user's language with limits per category."""
+    try:
+        user_id = request.args.get('user_id', type=int)
+        limit_per_category = request.args.get('limit', 5, type=int)
+    
+        if not user_id:
+            return jsonify({"success": False, "message": "Missing user_id"}), 400
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"success": False, "message": "User not found"}), 404
+
+        # Get the current user's language preference
+        current_user_obj = User.query.get(user_id)
+        user_language = current_user_obj.language_code if current_user_obj else 'en'
+
+        # Single query using LEFT JOIN to exclude completed campaigns AND campaigns that reached goal
+        unclaimed_campaigns = db.session.query(UserCampaign).outerjoin(
+            user_task_completion,
+            (user_task_completion.c.campaign_id == UserCampaign.id) & 
+            (user_task_completion.c.user_id == user_id) &
+            (user_task_completion.c.completed_at.isnot(None))
+        ).filter(
+            user_task_completion.c.campaign_id.is_(None),  # No completed records exist
+            UserCampaign.completions < UserCampaign.goal   # Exclude campaigns that reached goal
+        ).all()
+
+        # Filter campaigns by language and organize by category
+        filtered_campaigns = []
+        category_counts = {'GAME': 0, 'SOCIAL': 0, 'PARTNER': 0}
+        
+        for campaign in unclaimed_campaigns:
+            # If campaign has no language restrictions or user's language is included
+            if (not campaign.langs or 
+                campaign.langs == [] or 
+                campaign.langs == [''] or 
+                user_language in campaign.langs):
+                
+                # Check if we've reached the limit for this category
+                if category_counts.get(campaign.category, 0) < limit_per_category:
+                    filtered_campaigns.append(campaign)
+                    category_counts[campaign.category] = category_counts.get(campaign.category, 0) + 1
+
+        # Sort by ID
+        filtered_campaigns.sort(key=lambda x: x.id)
+
+        return jsonify([c.to_dict() for c in filtered_campaigns]), 200
+
+    except Exception as e:
+        print(f"Error fetching unclaimed campaigns: {e}")
+        return jsonify([]), 200
+
+
 @app.route("/daily-tasks/incomplete", methods=["GET"])
+@jwt_required
 def get_incomplete_tasks():
     user_id = request.args.get('user_id')
+    include_in_progress = request.args.get('include_in_progress', 'false').lower() == 'true'
     
     if not user_id:
         return jsonify({"error": "user_id parameter is required"}), 400
     
-    # Use a subquery to find incomplete tasks
-    completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
-        .filter(user_daily_task_completions.c.user_id == user_id)\
-        .filter(user_daily_task_completions.c.completed_at.isnot(None))\
-        .subquery()
-    
-    # Get tasks that are NOT in the completed subquery
-    incomplete_tasks = DailyTask.query\
-        .filter_by(status=CampaignStatus.ACTIVE)\
-        .filter(~DailyTask.id.in_(completed_subquery))\
-        .all()
-    
-    # Convert to dict with completion status
-    tasks_data = []
-    for task in incomplete_tasks:
-        task_dict = task.to_dict()
-        task_dict['completed'] = False
-        task_dict['claimed'] = False
-        tasks_data.append(task_dict)
-    
-    return jsonify(tasks_data), 200
+    try:
+        # Get current time for 24-hour check
+        current_time = datetime.utcnow()
+        
+        # Subquery for completed tasks
+        completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+            .filter(user_daily_task_completions.c.user_id == user_id)\
+            .filter(user_daily_task_completions.c.completed_at.isnot(None))\
+            .subquery()
+        
+        # Base query for incomplete tasks
+        query = DailyTask.query\
+            .filter_by(status=CampaignStatus.ACTIVE)\
+            .filter(~DailyTask.id.in_(completed_subquery))
+        
+        if not include_in_progress:
+            # Exclude tasks that are in progress but within 24 hours
+            # Get tasks that are either not started OR started but over 24 hours ago
+            in_progress_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+                .filter(user_daily_task_completions.c.user_id == user_id)\
+                .filter(user_daily_task_completions.c.started_at.isnot(None))\
+                .filter(user_daily_task_completions.c.completed_at.is_(None))\
+                .subquery()
+            
+            # Only include tasks that are either:
+            # 1. Not started at all, OR
+            # 2. Started but over 24 hours ago (need to be restarted)
+            query = query.filter(
+                ~DailyTask.id.in_(in_progress_subquery) | 
+                (DailyTask.id.in_(in_progress_subquery) & 
+                 user_daily_task_completions.c.started_at <= (current_time - timedelta(hours=24)))
+            )
+        
+        incomplete_tasks = query.all()
+        
+        # Convert to dict with completion status and time info
+        tasks_data = []
+        for task in incomplete_tasks:
+            # Check if task is in progress
+            progress_record = db.session.query(user_daily_task_completions)\
+                .filter_by(user_id=user_id, task_id=task.id)\
+                .first()
+            
+            task_dict = task.to_dict()
+            task_dict['completed'] = False
+            task_dict['claimed'] = False
+            task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
+            task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
+            
+            # Calculate if within 24 hours
+            if task_dict['in_progress'] and progress_record.started_at:
+                hours_passed = (current_time - progress_record.started_at).total_seconds() / 3600
+                task_dict['within_24_hours'] = hours_passed <= 24
+            else:
+                task_dict['within_24_hours'] = False
+                
+            tasks_data.append(task_dict)
+        
+        return jsonify(tasks_data), 200
+        
+    except Exception as e:
+        print(f"Error fetching incomplete daily tasks: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+
+
+
 
 
 

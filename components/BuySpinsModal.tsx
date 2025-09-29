@@ -201,7 +201,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
                     <div className="flex justify-between items-center">
                         <span className="text-slate-300">Your TON:</span>
                         <span className="text-blue-400 font-bold">
-                            {user?.ad_balance ? Number(user.ad_balance).toFixed(3) : '0.000'} TON
+                            {user?.ad_credit ? Number(user.ad_credit).toFixed(3) : '0.000'} TON
                         </span>
                     </div>
                 </div>

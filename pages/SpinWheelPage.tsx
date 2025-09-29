@@ -53,7 +53,6 @@ const EarnSpinOption: React.FC<{
   </div>
 );
 
-
 const SpinWheelPage: React.FC<{ 
   user: User | null; 
   setUser: (user: User) => void 
@@ -71,147 +70,128 @@ const SpinWheelPage: React.FC<{
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
 
-
-
-  
-
-
-
-
-
   useEffect(() => {
-  currentSpins.current = user?.spins ?? 0;
-}, [user?.spins, user?.coins, user?.ad_credit]); // Add dependencies for all user properties that can change
+    currentSpins.current = user?.spins ?? 0;
+  }, [user?.spins, user?.coins, user?.ad_credit]);
 
-const handleSpin = async (): Promise<boolean> => {
-  // Use currentSpins.current instead of user?.spins for immediate accuracy
-  if (isSpinning || currentSpins.current <= 0 || !user) return false;
+  const handleSpin = async (): Promise<boolean> => {
+    if (isSpinning || currentSpins.current <= 0 || !user) return false;
 
-  setIsSpinning(true);
+    setIsSpinning(true);
 
-  try {
-    const result = await spinWheel(user.id);
-    
-    if (!result.success) {
+    try {
+      const result = await spinWheel(user.id);
+      
+      if (!result.success) {
+        setIsSpinning(false);
+        return false;
+      }
+
+      const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
+      const numPrizes = SPIN_WHEEL_PRIZES.length;
+      const segmentAngle = 360 / numPrizes;
+      const targetAngle = prizeIndex !== -1 ? 
+        (prizeIndex * segmentAngle) + (segmentAngle / 2) : 
+        Math.random() * 360;
+      
+      const fullRotations = 5;
+      const stopAngle = 270 - targetAngle;
+      const finalRotation = rotation + (fullRotations * 360) + stopAngle - (rotation % 360);
+
+      setRotation(finalRotation);
+
+      const spinResult = result;
+
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      
+      if (spinResult.prize) {
+        const updatedUser = { ...user };
+        
+        switch (spinResult.prize.type) {
+          case 'spins':
+            updatedUser.spins = (user.spins || 0) + spinResult.prize.value;
+            currentSpins.current = updatedUser.spins;
+            break;
+          case 'coins':
+            updatedUser.coins = (user.coins || 0) + spinResult.prize.value;
+            break;
+          case 'ton':
+            updatedUser.ad_credit = (user.ad_credit ? 
+              (Number(user.ad_credit) + spinResult.prize.value).toString() : 
+              spinResult.prize.value.toString()
+            );
+            break;
+        }
+        
+        setUser(updatedUser);
+        setRecentPrize(spinResult.prize);
+      }
+
+      if (spinResult.user) {
+        setUser(spinResult.user);
+        currentSpins.current = spinResult.user.spins;
+      }
+      
+      setIsSpinning(false);
+      
+      if (spinResult.prize?.value > 0) {
+        setShowPrizeNotification(spinResult.prize);
+      }
+      
+      return true;
+
+    } catch (error) {
+      console.error("An error occurred during the spin:", error);
       setIsSpinning(false);
       return false;
     }
+  };
 
-    // Calculate rotation based on the actual prize
-    const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
-    const numPrizes = SPIN_WHEEL_PRIZES.length;
-    const segmentAngle = 360 / numPrizes;
-    const targetAngle = prizeIndex !== -1 ? 
-      (prizeIndex * segmentAngle) + (segmentAngle / 2) : 
-      Math.random() * 360;
-    
-    const fullRotations = 5;
-    const stopAngle = 270 - targetAngle;
-    const finalRotation = rotation + (fullRotations * 360) + stopAngle - (rotation % 360);
-
-    // Update rotation to the calculated final position
-    setRotation(finalRotation);
-
-    // Store the result for later use
-    const spinResult = result;
-
-    // Wait for animation to complete FIRST
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    
-    // ✅ NOW update user state AFTER animation completes
-    if (spinResult.prize) {
-      const updatedUser = { ...user };
-      
-      // Handle different prize types
-      switch (spinResult.prize.type) {
-        case 'spins':
-          updatedUser.spins = (user.spins || 0) + spinResult.prize.value;
-          currentSpins.current = updatedUser.spins;
-          break;
-        case 'coins':
-          updatedUser.coins = (user.coins || 0) + spinResult.prize.value;
-          break;
-        case 'ton':
-          updatedUser.ad_credit = (user.ad_credit ? 
-            (Number(user.ad_credit) + spinResult.prize.value).toString() : 
-            spinResult.prize.value.toString()
-          );
-          break;
-      }
-      
-      // Update user state after animation
-      setUser(updatedUser);
-      setRecentPrize(spinResult.prize);
-    }
-
-    // ✅ Final update with server data to ensure consistency
-    if (spinResult.user) {
-      setUser(spinResult.user);
-      currentSpins.current = spinResult.user.spins;
-    }
-    
-    setIsSpinning(false);
-    
-    if (spinResult.prize?.value > 0) {
-      setShowPrizeNotification(spinResult.prize);
-    }
-    
-    return true;
-
-  } catch (error) {
-    console.error("An error occurred during the spin:", error);
-    setIsSpinning(false);
-    return false;
-  }
-};
-
-
-
-
-
-
-
-
-  // ... (The rest of the component, including runAutoSpin, toggleAutoSpin, etc., remains the same)
   const runAutoSpin = async () => {
-  if (!user) return;
-  
-  autoSpinActive.current = true;
-  setIsAutoSpinning(true);
+    if (!user) return;
 
-  let spinsInSession = 0;
-  let currentUser = user; // Keep local reference to current user state
+    autoSpinActive.current = true;
+    setIsAutoSpinning(true);
 
-  while (autoSpinActive.current && currentSpins.current > 0) {
-    spinsInSession++;
-    
-    // Store current user state before spin
-    const userBeforeSpin = currentUser;
-    
-    const success = await handleSpin();
-    
-    // Update local user reference if handleSpin updated it
-    if (success && currentUser !== user) {
-      currentUser = user;
-    }
-    
-    // Wait for spin animation to mostly finish before the next one
-    await new Promise(resolve => setTimeout(resolve, success ? 4250 : 250));
+    let spinsInSession = 0;
 
-    if (autoSpinActive.current && currentSpins.current > 0 && spinsInSession > 0 && spinsInSession % 5 === 0) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      try {
-        await show_9692552();
-      } catch (e) {
-        console.error("Ad failed during auto-spin", e);
+    while (autoSpinActive.current) {
+      if (currentSpins.current <= 0) {
+        try {
+          await show_9692552();
+          const result = await watchAdForSpin(user.id);
+          if (result.success && result.user) {
+            setUser(result.user);
+            currentSpins.current = result.user.spins;
+          }
+        } catch (e) {
+          console.error("Auto earn spin failed:", e);
+          break;
+        }
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  }
 
-  autoSpinActive.current = false;
-  setIsAutoSpinning(false);
-};
+      if (currentSpins.current <= 0) {
+        break;
+      }
+
+      spinsInSession++;
+      const success = await handleSpin();
+
+      await new Promise(resolve => setTimeout(resolve, success ? 4250 : 500));
+
+      if (spinsInSession % 5 === 0 && autoSpinActive.current) {
+        try {
+          await show_9692552();
+        } catch (e) {
+          console.error("Ad failed during auto-spin", e);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    autoSpinActive.current = false;
+    setIsAutoSpinning(false);
+  };
 
   const toggleAutoSpin = () => {
     if (isAutoSpinning) {
@@ -221,7 +201,7 @@ const handleSpin = async (): Promise<boolean> => {
       runAutoSpin();
     }
   };
-
+  
   const handleWatchAd = async () => {
     if (!user) return;
     
@@ -292,12 +272,13 @@ const handleSpin = async (): Promise<boolean> => {
             />
             
 <div className="flex space-x-3 mt-6">
+  {/* SPIN Button - Shows loading only during manual spin */}
   <button 
     onClick={() => handleSpin()} 
     disabled={isSpinning || isAutoSpinning || userSpins <= 0} 
     className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-xl text-base hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 flex items-center justify-center min-w-0"
   >
-    {isSpinning ? (
+    {isSpinning && !isAutoSpinning ? (
       <div className="flex items-center justify-center space-x-2">
         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
         <span className="text-sm font-medium">SPINNING</span>
@@ -310,21 +291,30 @@ const handleSpin = async (): Promise<boolean> => {
     )}
   </button>
   
+  {/* AUTO/STOP Button - Clear distinction between modes */}
   <button 
     onClick={toggleAutoSpin} 
     disabled={isSpinning || userSpins <= 0} 
     className={`flex-1 font-bold py-3 px-4 rounded-xl text-base transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg flex items-center justify-center min-w-0 ${
       isAutoSpinning 
-        ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25' 
-        : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25'
+        ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25 text-white' 
+        : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25 text-white'
     }`}
   >
     {isAutoSpinning ? (
+      // STOP button state - shows loading only during active spins
       <div className="flex items-center justify-center space-x-2">
-        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        {isSpinning ? (
+          // Loading spinner only appears when wheel is actually spinning
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        ) : (
+          // Stop icon when waiting between spins
+          <span className="text-lg">⏹️</span>
+        )}
         <span className="text-sm font-medium">STOP</span>
       </div>
     ) : (
+      // AUTO button state
       <div className="flex items-center justify-center space-x-2">
         <span className="text-lg">⚡</span>
         <span className="text-sm font-medium">AUTO</span>

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { DailyTask, GameTask, User, PartnerCampaign, UserCampaign } from '../types';
 import { 
-
   claimDailyTask,
   fetchAllCampaignsAPI,
   startTask,
@@ -18,12 +17,19 @@ import { ICONS, CONVERSION_RATE, TASK_TYPES } from '../constants';
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
 const TasksLockedOverlay = () => (
-  <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-center p-4 rounded-lg">
-    <div className="w-16 h-16 mb-4 text-slate-500">
-      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+  <div className="absolute inset-0 bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-md z-10 flex flex-col items-center justify-center text-center p-6 rounded-xl border border-slate-700/50">
+    <div className="w-20 h-20 mb-4 text-slate-400">
+      <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+      </svg>
     </div>
-    <h3 className="text-xl font-bold text-white">Tasks Locked</h3>
-    <p className="text-slate-400 mt-2">Please complete all mandatory daily tasks to unlock more ways to earn.</p>
+    <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent mb-3">
+      Tasks Locked
+    </h3>
+    <p className="text-slate-300 text-lg leading-relaxed max-w-md">
+      Complete all mandatory daily tasks to unlock more ways to earn rewards and opportunities.
+    </p>
   </div>
 );
 
@@ -48,28 +54,41 @@ const PromoCodeSection: React.FC<{ setUser: (user: User) => void }> = ({ setUser
   };
 
   return (
-    <section>
-      <h2 className="text-xl font-bold mb-4 text-white">Promo Code</h2>
-      <div className="bg-slate-800 p-4 rounded-lg space-y-3">
-        <div className="flex space-x-2">
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="ENTER PROMO CODE"
-            className="flex-grow bg-slate-700 border border-slate-600 rounded-lg p-3 text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition uppercase"
-            disabled={isLoading}
-          />
+    <section className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+          Promo Code
+        </h2>
+        <div className="w-8 h-8 text-green-400">
+          {ICONS.gift}
+        </div>
+      </div>
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-6 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-grow">
+            <input
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="ENTER PROMO CODE"
+              className="w-full bg-slate-800/80 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-400 focus:ring-2 focus:ring-green-500/50 focus:border-green-500 outline-none transition-all duration-200 uppercase font-medium tracking-wider backdrop-blur-sm"
+              disabled={isLoading}
+            />
+          </div>
           <button
             onClick={handleRedeem}
             disabled={!code || isLoading}
-            className="bg-green-500 text-white font-bold py-3 px-6 rounded-lg transition-colors hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed"
+            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-4 px-6 sm:px-8 rounded-xl transition-all duration-200 hover:from-green-600 hover:to-emerald-700 disabled:from-slate-700 disabled:to-slate-800 disabled:cursor-not-allowed disabled:opacity-50 shadow-lg hover:shadow-green-500/25 flex-shrink-0 min-w-[120px] justify-center items-center"
           >
-            {isLoading ? '...' : 'Apply'}
+            {isLoading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ) : (
+              'Apply'
+            )}
           </button>
         </div>
         {feedback && (
-          <p className={`text-sm text-center font-semibold pt-2 ${feedback.isError ? 'text-red-500' : 'text-green-500'}`}>
+          <p className={`text-sm font-semibold pt-3 text-center ${feedback.isError ? 'text-red-400' : 'text-green-400'}`}>
             {feedback.message}
           </p>
         )}
@@ -78,13 +97,41 @@ const PromoCodeSection: React.FC<{ setUser: (user: User) => void }> = ({ setUser
   );
 };
 
+// Mobile detection utility
+const isMobileDevice = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+// Improved link opening for mobile devices
+const openLink = (url: string) => {
+  if (!url) return;
+  
+  // Check if it's a deep link (telegram, whatsapp, etc.)
+  const isDeepLink = url.startsWith('tg:') || 
+                    url.startsWith('whatsapp:') || 
+                    url.startsWith('fb:') ||
+                    url.startsWith('twitter:') ||
+                    url.includes('//t.me/');
+  
+  if (isMobileDevice() && isDeepLink) {
+    // For mobile deep links, use direct window location
+    window.location.href = url;
+  } else if (isMobileDevice()) {
+    // For regular URLs on mobile, open in same tab for better UX
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    // For desktop, open in new tab
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+};
+
 // ---------------- Daily Task Item ----------------
 const DailyTaskItem: React.FC<{ 
   task: DailyTask; 
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string) => void;
   onClaim: (taskId: number) => void;
   buttonState: { text: string; disabled: boolean; variant: string };
 }> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
@@ -95,44 +142,68 @@ const DailyTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id, task.taskType); // Pass task type here
-      // Open the link in a new tab for non-ad tasks immediately after starting
-      if (task.taskType !== TASK_TYPES.AD && task.link) {
-        window.open(task.link, '_blank');
-      }
+      onStart(task.id, task.taskType, task.link);
     }
   };
 
-  const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
+  // SIMPLE REWARD CALCULATION - Use direct reward field or fixed value
+  const calculateReward = () => {
+    // Try to get reward from different possible fields
+    const possibleRewardFields = [
+      task.reward,
+      task.cost,
+      task.points,
+      task.coins,
+      task.amount
+    ];
+    
+    for (const reward of possibleRewardFields) {
+      if (reward !== undefined && reward !== null && !isNaN(Number(reward)) && Number(reward) > 0) {
+        return Number(reward);
+      }
+    }
+    
+    // Fallback rewards based on task type
+    if (task.taskType === TASK_TYPES.AD) {
+      return 500; // Default ad reward
+    } else if (task.taskType === 'SOCIAL') {
+      return 300; // Default social task reward
+    } else {
+      return 200; // Default reward for other tasks
+    }
+  };
 
-  // Determine if this is a clickable task (has a link and is not an ad)
-  const isClickable = task.link && task.taskType !== TASK_TYPES.AD;
-  const href = isClickable ? task.link : '#';
-  const target = isClickable ? '_blank' : '_self';
+  const reward = calculateReward();
 
   return (
-    <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-between">
-      <div className="flex items-center space-x-4 flex-grow min-w-0">
-        <div className={`bg-slate-700 p-3 rounded-full flex-shrink-0 ${buttonClass.split(' ')[0]}`}>
-          {icon}
+    <div className="group bg-gradient-to-br from-slate-800/60 to-slate-900/60 p-5 rounded-xl border border-slate-700/50 hover:border-slate-600/50 transition-all duration-300 backdrop-blur-sm hover:shadow-lg">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4 flex-grow min-w-0">
+          <div className={`bg-gradient-to-br from-slate-700 to-slate-800 p-3 rounded-xl flex-shrink-0 group-hover:scale-105 transition-transform duration-200 ${buttonClass.split(' ')[0]}`}>
+            <div className="w-6 h-6 text-white">
+              {icon}
+            </div>
+          </div>
+          <div className="flex-grow min-w-0">
+            <h3 className="font-semibold text-white truncate text-lg" title={task.title}>{task.title}</h3>
+            <p className="text-slate-400 text-sm mt-1">{description}</p>
+            <div className="flex items-center space-x-2 mt-2">
+              <span className="text-green-400 font-semibold">+{reward.toLocaleString()} Coins</span>
+              {task.in_progress && (
+                <span className="text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">In Progress</span>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="flex-grow min-w-0">
-          <h3 className="font-semibold text-white truncate" title={task.title}>{task.title}</h3>
-          <p className="text-sm text-slate-400">{description}</p>
-          <p className="text-sm text-green-400 mt-1">+{(reward).toLocaleString()} Coins</p>
-        </div>
+        <button
+          onClick={handleClick}
+          className={`${buttonClass} text-white font-bold py-3 px-6 rounded-xl text-sm transition-all duration-200 flex-shrink-0 ml-4 shadow-lg hover:shadow-xl transform hover:scale-105 ${
+            buttonState.disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:opacity-90'
+          }`}
+        >
+          {buttonState.text}
+        </button>
       </div>
-      <a
-        href={href}
-        target={target}
-        rel="noopener noreferrer"
-        onClick={handleClick}
-        className={`${buttonClass} text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors flex-shrink-0 ml-2 ${
-          buttonState.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
-        }`}
-      >
-        {buttonState.text}
-      </a>
     </div>
   );
 };
@@ -143,7 +214,7 @@ const CampaignTaskItem: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string) => void;
   onClaim: (taskId: number) => void;
   buttonState: { text: string; disabled: boolean; variant: string };
 }> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
@@ -154,36 +225,102 @@ const CampaignTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id);
+      onStart(task.id, task.taskType, task.link);
     }
   };
 
-  const reward = (task.cost / (task.goal || 1)) * 0.4 * CONVERSION_RATE;
+  // SIMPLE REWARD CALCULATION - Use direct reward field or fixed value
+  const calculateReward = () => {
+    // Try to get reward from different possible fields
+    const possibleRewardFields = [
+      task.reward,
+      task.cost,
+      task.points,
+      task.coins,
+      task.amount,
+      task.payout
+    ];
+    
+    for (const reward of possibleRewardFields) {
+      if (reward !== undefined && reward !== null && !isNaN(Number(reward)) && Number(reward) > 0) {
+        return Number(reward) * CONVERSION_RATE;
+      }
+    }
+    
+    // Fallback rewards based on category
+    if (task.category === 'GAME') {
+      return 1000; // Default game task reward
+    } else if (task.category === 'SOCIAL') {
+      return 500; // Default social task reward
+    } else if (task.category === 'PARTNER') {
+      return 800; // Default partner task reward
+    } else {
+      return 500; // Default reward
+    }
+  };
+
+  const reward = calculateReward();
 
   return (
-    <div className="bg-slate-800 p-4 rounded-lg flex items-center justify-between">
-      <div className="flex items-center space-x-4 flex-grow min-w-0">
-        <div className={`bg-slate-700 p-3 rounded-full flex-shrink-0 ${buttonClass.split(' ')[0]}`}>
-          {icon}
+    <div className="group bg-gradient-to-br from-slate-800/60 to-slate-900/60 p-5 rounded-xl border border-slate-700/50 hover:border-slate-600/50 transition-all duration-300 backdrop-blur-sm hover:shadow-lg">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4 flex-grow min-w-0">
+          <div className={`bg-gradient-to-br from-slate-700 to-slate-800 p-3 rounded-xl flex-shrink-0 group-hover:scale-105 transition-transform duration-200 ${buttonClass.split(' ')[0]}`}>
+            <div className="w-6 h-6 text-white">
+              {icon}
+            </div>
+          </div>
+          <div className="flex-grow min-w-0">
+            <h3 className="font-semibold text-white truncate text-lg" title={task.title}>{task.title}</h3>
+            <p className="text-slate-400 text-sm mt-1">{description}</p>
+            <p className="text-green-400 font-semibold mt-2">+{reward.toLocaleString()} Coins</p>
+          </div>
         </div>
-        <div className="flex-grow min-w-0">
-          <h3 className="font-semibold text-white truncate" title={task.title}>{task.title}</h3>
-          <p className="text-sm text-slate-400">{description}</p>
-          <p className="text-sm text-green-400 mt-1">+{(reward).toLocaleString()} Coins</p>
-        </div>
+        <button
+          onClick={handleClick}
+          className={`${buttonClass} text-white font-bold py-3 px-6 rounded-xl text-sm transition-all duration-200 flex-shrink-0 ml-4 shadow-lg hover:shadow-xl transform hover:scale-105 ${
+            buttonState.disabled ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:opacity-90'
+          }`}
+        >
+          {buttonState.text}
+        </button>
       </div>
-      <a
-        href="#"
-        onClick={handleClick}
-        className={`${buttonClass} text-white font-bold py-2 px-4 rounded-lg text-sm transition-colors flex-shrink-0 ml-2 ${
-          buttonState.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
-        }`}
-      >
-        {buttonState.text}
-      </a>
     </div>
   );
 };
+
+// ---------------- Section Header ----------------
+const SectionHeader: React.FC<{
+  title: string;
+  icon: React.ReactNode;
+  taskCount: number;
+  onShowMore?: () => void;
+  showMoreEnabled?: boolean;
+}> = ({ title, icon, taskCount, onShowMore, showMoreEnabled }) => (
+  <div className="flex items-center justify-between mb-6">
+    <div className="flex items-center space-x-3">
+      <div className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-800 rounded-xl flex items-center justify-center">
+        <div className="w-5 h-5 text-white">
+          {icon}
+        </div>
+      </div>
+      <div>
+        <h2 className="text-2xl font-bold bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent">
+          {title}
+        </h2>
+        <p className="text-slate-400 text-sm">{taskCount} task{taskCount !== 1 ? 's' : ''} available</p>
+      </div>
+    </div>
+    {showMoreEnabled && onShowMore && (
+      <button
+        onClick={onShowMore}
+        className="bg-slate-700/50 hover:bg-slate-600/50 text-slate-300 hover:text-white px-4 py-2 rounded-xl transition-all duration-200 border border-slate-600/50 hover:border-slate-500/50 text-sm font-medium"
+      >
+        Show More
+      </button>
+    )}
+  </div>
+);
 
 // ---------------- Generic Task Section ----------------
 const TaskSection: React.FC<{
@@ -192,15 +329,22 @@ const TaskSection: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string) => void;
   onClaim: (taskId: number) => void;
   getTaskButtonState: (taskId: number) => { text: string; disabled: boolean; variant: string };
   TaskComponent?: React.ComponentType<any>;
-}> = ({ title, tasks, icon, description, buttonClass, onStart, onClaim, getTaskButtonState, TaskComponent }) => {
+  onShowMore?: () => void;
+}> = ({ title, tasks, icon, description, buttonClass, onStart, onClaim, getTaskButtonState, TaskComponent, onShowMore }) => {
   return (
-    <section>
-      <h2 className="text-xl font-bold mb-4 text-white">{title}</h2>
-      <div className="space-y-3">
+    <section className="mb-8">
+      <SectionHeader
+        title={title}
+        icon={icon}
+        taskCount={tasks.length}
+        onShowMore={onShowMore}
+        showMoreEnabled={tasks.length >= 5 && onShowMore !== undefined}
+      />
+      <div className="space-y-4">
         {tasks.length > 0 ? (
           tasks.map((task) => {
             const buttonState = getTaskButtonState(task.id);
@@ -219,12 +363,43 @@ const TaskSection: React.FC<{
             );
           })
         ) : (
-          <div className="bg-slate-800 p-6 rounded-lg text-center text-slate-400">
-            <p>No {title.toLowerCase()} available right now.</p>
+          <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl text-center border border-slate-700/50 backdrop-blur-sm">
+            <div className="w-16 h-16 mx-auto mb-4 text-slate-500">
+              <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-slate-300 mb-2">No {title.toLowerCase()} available</h3>
+            <p className="text-slate-500">Check back later for new opportunities</p>
           </div>
         )}
       </div>
     </section>
+  );
+};
+
+// ---------------- Progress Indicator ----------------
+const ProgressIndicator: React.FC<{ completed: number; total: number }> = ({ completed, total }) => {
+  const percentage = (completed / total) * 100;
+  
+  return (
+    <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50 backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold text-white">Daily Progress</h3>
+        <span className="text-slate-400 text-sm">{completed}/{total} completed</span>
+      </div>
+      <div className="w-full bg-slate-700/50 rounded-full h-3">
+        <div 
+          className="bg-gradient-to-r from-green-500 to-emerald-600 h-3 rounded-full transition-all duration-500 ease-out"
+          style={{ width: `${percentage}%` }}
+        ></div>
+      </div>
+      <p className="text-slate-400 text-sm mt-3">
+        {completed === total ? 'All tasks completed! 🎉' : 'Complete all daily tasks to unlock more opportunities'}
+      </p>
+    </div>
   );
 };
 
@@ -236,13 +411,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   const [dailyTaskStatuses, setDailyTaskStatuses] = useState<Record<string, { started: boolean; completed: boolean; claimed: boolean }>>({});
   const [loadingTasks, setLoadingTasks] = useState<Set<number>>(new Set());
   const [loadingDailyTasks, setLoadingDailyTasks] = useState<Set<number>>(new Set());
-
-
-
-
-   
-
-
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadAllData();
@@ -250,18 +419,20 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
 
   const loadAllData = async () => {
     try {
-      const campaignsData = await fetchAllCampaignsAPI(user.id);
-      setCampaigns(campaignsData);
+      const [campaignsData, dailyTasksData, statusResponse, dailyStatusResponse] = await Promise.all([
+        fetchAllCampaignsAPI(user.id),
+        fetchIncompleteDailyTasks(user.id),
+        getUserTaskStatus(user.id),
+        getUserDailyTaskStatus(user.id)
+      ]);
 
-      const dailyTasksData = await fetchIncompleteDailyTasks(user.id);
+      setCampaigns(campaignsData);
       setDailyTasks(dailyTasksData);
 
-      const statusResponse = await getUserTaskStatus(user.id);
       if (statusResponse.success) {
         setTaskStatuses(statusResponse.taskStatuses);
       }
 
-      const dailyStatusResponse = await getUserDailyTaskStatus(user.id);
       if (dailyStatusResponse.success) {
         setDailyTaskStatuses(dailyStatusResponse.taskStatuses);
       }
@@ -270,16 +441,12 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     }
   };
 
-  // ---- Ad handling function - use the same approach as SpinWheel page ----
   const showAdIfAvailable = async (): Promise<boolean> => {
     try {
-      // Use the same function declaration as in SpinWheel page
       await show_9692552();
-      
       return true;
     } catch (e) {
       console.error("Ad failed to show", e);
-      // In development, simulate ad success
       if (process.env.NODE_ENV === 'development') {
         console.log("Simulating ad in development");
         return true;
@@ -289,15 +456,13 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   };
 
   // ---- Daily Task Logic ----
-  const handleDailyTaskStart = async (taskId: number, taskType?: string) => {
+  const handleDailyTaskStart = async (taskId: number, taskType?: string, link?: string) => {
     setLoadingDailyTasks(prev => new Set(prev).add(taskId));
 
     try {
-      // Find the daily task to get its type
       const task = dailyTasks.find(t => t.id === taskId);
       const actualTaskType = taskType || task?.type;
       
-      // Show ad for ad-type tasks before starting
       if (actualTaskType?.toLowerCase() === TASK_TYPES.AD.toLowerCase()) {
         const adShown = await showAdIfAvailable();
         if (!adShown) {
@@ -314,9 +479,14 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
           [taskId]: { started: true, completed: false, claimed: false }
         }));
         
-        // For ad tasks, automatically mark as completed after ad is shown
+        // REDIRECT: For non-AD tasks with links, open using mobile-friendly method
+        if (link && actualTaskType !== TASK_TYPES.AD) {
+          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice());
+          openLink(link);
+        }
+        
+        // Auto-claim AD tasks
         if (actualTaskType === TASK_TYPES.AD) {
-          // Small delay to allow state update before claiming
           setTimeout(() => {
             handleDailyTaskClaim(taskId);
           }, 500);
@@ -374,22 +544,10 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     return { text: 'Start', disabled: false, variant: 'start' };
   };
 
-  const dailyTasksCompleted = dailyTasks.every(task => 
-    dailyTaskStatuses[task.id]?.claimed === true
-  );
-
   // ---- Campaign Tasks ----
-  const handleTaskStart = async (taskId: number, taskType?: string) => {
+  const handleTaskStart = async (taskId: number, taskType?: string, link?: string) => {
     setLoadingTasks(prev => new Set(prev).add(taskId));
     try {
-      // // Show ad for ad-type tasks before starting
-      // if (taskType === TASK_TYPES.AD) {
-      //   if (!adShown) {
-      //     alert("Ad failed to load. Please try again.");
-      //     return;
-      //   }
-      // }
-
       const result = await startTask(user.id, taskId);
       if (result.success) {
         setTaskStatuses(prev => ({
@@ -397,17 +555,20 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
           [taskId]: { started: true, completed: false }
         }));
         
-        const task = campaigns.find(t => t.id === taskId);
-        if (task && task.taskType !== TASK_TYPES.AD) {
-          window.open(task.link, '_blank');
+        // REDIRECT: For non-AD tasks with links, open using mobile-friendly method
+        if (link && taskType !== TASK_TYPES.AD) {
+          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice());
+          openLink(link);
         }
         
-        // For ad tasks, automatically mark as completed after ad is shown
+        // For AD tasks, show the ad and auto-claim
         if (taskType === TASK_TYPES.AD) {
-          // Small delay to allow state update before claiming
-          setTimeout(() => {
-            handleTaskClaim(taskId);
-          }, 500);
+          const adShown = await showAdIfAvailable();
+          if (adShown) {
+            setTimeout(() => {
+              handleTaskClaim(taskId);
+            }, 500);
+          }
         }
       } else {
         alert(result.message);
@@ -463,64 +624,116 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     return { text: 'Start', disabled: false, variant: 'start' };
   };
 
+  const loadMoreCampaigns = async (category: string) => {
+    try {
+      const response = await fetchAllCampaignsAPI(user.id);
+      const allCategoryCampaigns = response.filter((campaign: UserCampaign) => campaign.category === category);
+      setCampaigns(prev => {
+        const otherCampaigns = prev.filter(c => c.category !== category);
+        return [...otherCampaigns, ...allCategoryCampaigns];
+      });
+      setExpandedCategories(prev => ({ ...prev, [category]: true }));
+    } catch (error) {
+      console.error("Error loading more campaigns:", error);
+    }
+  };
+
   const gameTasks = campaigns.filter(c => c.category === "GAME");
   const socialTasks = campaigns.filter(c => c.category === "SOCIAL");
   const partnerTasks = campaigns.filter(c => c.category === "PARTNER");
 
+  const dailyTasksCompleted = dailyTasks.every(task => 
+    dailyTaskStatuses[task.id]?.claimed === true
+  );
+
+  const completedDailyCount = dailyTasks.filter(task => 
+    dailyTaskStatuses[task.id]?.claimed === true
+  ).length;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-4xl mx-auto">
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-white to-slate-200 bg-clip-text text-transparent mb-3">
+          Earn Rewards
+        </h1>
+        <p className="text-slate-400 text-lg">Complete tasks and unlock opportunities to earn coins</p>
+      </div>
+
       <PromoCodeSection setUser={setUser} />
 
-      {/* Daily tasks */}
-      <TaskSection 
-        title="Daily tasks" 
-        tasks={dailyTasks} 
-        icon={ICONS.tasks}
-        description="Complete daily to earn rewards"
-        buttonClass="bg-orange-500 hover:bg-orange-600"
-        onStart={handleDailyTaskStart}
-        onClaim={handleDailyTaskClaim}
-        getTaskButtonState={getDailyTaskButtonState}
-        TaskComponent={DailyTaskItem}
-      />
+      {/* Daily tasks with progress */}
+      <section className="mb-8">
+        <SectionHeader
+          title="Daily Tasks"
+          icon={ICONS.tasks}
+          taskCount={dailyTasks.length}
+        />
+        <ProgressIndicator completed={completedDailyCount} total={dailyTasks.length} />
+        <div className="mt-6 space-y-4">
+          {dailyTasks.length > 0 ? (
+            dailyTasks.map((task) => {
+              const buttonState = getDailyTaskButtonState(task.id);
+              return (
+                <DailyTaskItem
+                  key={task.id}
+                  task={task}
+                  icon={ICONS.tasks}
+                  description="Complete daily to earn rewards"
+                  buttonClass="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700"
+                  onStart={handleDailyTaskStart}
+                  onClaim={handleDailyTaskClaim}
+                  buttonState={buttonState}
+                />
+              );
+            })
+          ) : (
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl text-center border border-slate-700/50 backdrop-blur-sm">
+              <p className="text-slate-400">No daily tasks available. Check back tomorrow!</p>
+            </div>
+          )}
+        </div>
+      </section>
 
       <div className="space-y-8 relative">
         {!dailyTasksCompleted && <TasksLockedOverlay />}
-        <div className={`space-y-8 transition-opacity ${!dailyTasksCompleted ? "opacity-20 pointer-events-none" : ""}`}>
+        <div className={`space-y-8 transition-all duration-500 ${!dailyTasksCompleted ? "opacity-30 pointer-events-none blur-sm" : "opacity-100"}`}>
           <TaskSection 
-            title="Game tasks" 
-            tasks={gameTasks} 
+            title="Game Tasks" 
+            tasks={gameTasks.slice(0, expandedCategories.GAME ? undefined : 5)} 
             icon={ICONS.game}
-            description="Play to earn"
-            buttonClass="bg-purple-500 hover:bg-purple-600"
+            description="Play games and complete challenges"
+            buttonClass="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700"
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
             TaskComponent={CampaignTaskItem}
+            onShowMore={gameTasks.length > 5 ? () => loadMoreCampaigns('GAME') : undefined}
           />
 
           <TaskSection 
-            title="Social tasks" 
-            tasks={socialTasks} 
+            title="Social Tasks" 
+            tasks={socialTasks.slice(0, expandedCategories.SOCIAL ? undefined : 5)} 
             icon={ICONS.telegram}
-            description="Subscribe and react"
-            buttonClass="bg-pink-500 hover:bg-pink-600"
+            description="Follow, like, and engage on social platforms"
+            buttonClass="bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700"
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
             TaskComponent={CampaignTaskItem}
+            onShowMore={socialTasks.length > 5 ? () => loadMoreCampaigns('SOCIAL') : undefined}
           />
 
           <TaskSection 
-            title="Partner tasks" 
-            tasks={partnerTasks} 
+            title="Partner Tasks" 
+            tasks={partnerTasks.slice(0, expandedCategories.PARTNER ? undefined : 5)} 
             icon={ICONS.gift}
-            description="Complete partner tasks"
-            buttonClass="bg-blue-500 hover:bg-blue-600"
+            description="Complete offers from our partners"
+            buttonClass="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
             onStart={handleTaskStart}
             onClaim={handleTaskClaim}
             getTaskButtonState={getTaskButtonState}
             TaskComponent={CampaignTaskItem}
+            onShowMore={partnerTasks.length > 5 ? () => loadMoreCampaigns('PARTNER') : undefined}
           />
         </div>
       </div>

@@ -18,22 +18,33 @@ const TransactionRow: React.FC<{ tx: Transaction }> = React.memo(({ tx }) => {
     FAILED: 'text-red-500',
   }[tx.status] || 'text-gray-500';
 
+  const statusBg = {
+    COMPLETED: 'bg-green-500/10',
+    PENDING: 'bg-yellow-500/10',
+    FAILED: 'bg-red-500/10',
+  }[tx.status] || 'bg-gray-500/10';
+
   const formattedDate = tx.date || new Date(tx.created_at).toLocaleDateString();
 
   return (
-    <div className="flex justify-between items-center py-3 border-b border-slate-700/50">
+    <div className="flex justify-between items-center py-3 px-3 bg-slate-700/30 rounded-lg hover:bg-slate-700/50 transition-colors">
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white truncate">{tx.description}</p>
-        <p className="text-sm text-slate-400">{formattedDate}</p>
+        <div className="flex items-center space-x-2">
+          <div className={`px-2 py-1 rounded-full ${statusBg} ${statusColor} text-xs font-medium`}>
+            {tx.status}
+          </div>
+          <p className="font-semibold text-white text-sm truncate">{tx.description}</p>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">{formattedDate}</p>
         {tx.transaction_id_on_blockchain && (
-          <p className="text-xs text-blue-400 mt-1 truncate">
-            TX: {tx.transaction_id_on_blockchain.slice(0, 8)}...{tx.transaction_id_on_blockchain.slice(-8)}
+          <p className="text-xs text-blue-400 mt-1 truncate font-mono">
+            TX: {tx.transaction_id_on_blockchain.slice(0, 6)}...{tx.transaction_id_on_blockchain.slice(-6)}
           </p>
         )}
       </div>
-      <div className="text-right flex-shrink-0 ml-4">
-        <p className="font-bold text-white">{Math.abs(tx.amount).toFixed(6)} {tx.currency}</p>
-        <p className={`text-sm font-medium ${statusColor}`}>{tx.status}</p>
+      <div className="text-right flex-shrink-0 ml-3">
+        <p className="font-bold text-white text-base">{Math.abs(tx.amount).toFixed(6)} {tx.currency}</p>
+        <p className="text-xs text-slate-400">{tx.currency === 'TON' ? 'TON' : 'Coins'}</p>
       </div>
     </div>
   );
@@ -47,45 +58,55 @@ const TransactionsFilters: React.FC<{
   onFiltersChange: (filters: TransactionsFilters) => void;
 }> = ({ filters, onFiltersChange }) => {
   return (
-    <div className="bg-slate-800 p-4 rounded-xl mb-4">
-      <h3 className="text-white font-semibold mb-3">Filters</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        <select
-          value={filters.status || ''}
-          onChange={(e) => onFiltersChange({ ...filters, status: e.target.value || undefined, page: 1 })}
-          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
-        >
-          <option value="">All Status</option>
-          <option value="COMPLETED">Completed</option>
-          <option value="PENDING">Pending</option>
-          <option value="FAILED">Failed</option>
-        </select>
+    <div className="bg-slate-800 p-4 rounded-xl mb-4 border border-slate-700/50">
+      <h3 className="text-white font-semibold mb-3 text-base">Filter Transactions</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-slate-300 text-xs block mb-1">Status</label>
+          <select
+            value={filters.status || ''}
+            onChange={(e) => onFiltersChange({ ...filters, status: e.target.value || undefined, page: 1 })}
+            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+          >
+            <option value="">All Status</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="PENDING">Pending</option>
+            <option value="FAILED">Failed</option>
+          </select>
+        </div>
 
-        <select
-          value={filters.currency || ''}
-          onChange={(e) => onFiltersChange({ ...filters, currency: e.target.value || undefined, page: 1 })}
-          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
-        >
-          <option value="">All Currencies</option>
-          <option value="TON">TON</option>
-          <option value="COINS">Coins</option>
-        </select>
+        <div>
+          <label className="text-slate-300 text-xs block mb-1">Currency</label>
+          <select
+            value={filters.currency || ''}
+            onChange={(e) => onFiltersChange({ ...filters, currency: e.target.value || undefined, page: 1 })}
+            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+          >
+            <option value="">All Currencies</option>
+            <option value="TON">TON</option>
+            <option value="COINS">Coins</option>
+          </select>
+        </div>
 
-        <input
-          type="date"
-          value={filters.startDate || ''}
-          onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined, page: 1 })}
-          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
-          placeholder="Start Date"
-        />
+        <div>
+          <label className="text-slate-300 text-xs block mb-1">From Date</label>
+          <input
+            type="date"
+            value={filters.startDate || ''}
+            onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined, page: 1 })}
+            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+          />
+        </div>
 
-        <input
-          type="date"
-          value={filters.endDate || ''}
-          onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined, page: 1 })}
-          className="bg-slate-700 text-white p-2 rounded border border-slate-600"
-          placeholder="End Date"
-        />
+        <div>
+          <label className="text-slate-300 text-xs block mb-1">To Date</label>
+          <input
+            type="date"
+            value={filters.endDate || ''}
+            onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined, page: 1 })}
+            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+          />
+        </div>
       </div>
     </div>
   );
@@ -104,39 +125,43 @@ const Pagination: React.FC<{
       <button
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage === 1}
-        className="px-3 py-1 bg-slate-700 text-white rounded disabled:opacity-50"
+        className="px-3 py-1.5 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 text-sm"
       >
-        ←
+        <span>←</span>
+        <span>Prev</span>
       </button>
 
-      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-        const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
-        if (page > totalPages) return null;
-        
-        return (
-          <button
-            key={page}
-            onClick={() => onPageChange(page)}
-            className={`px-3 py-1 rounded ${
-              currentPage === page
-                ? 'bg-green-500 text-white'
-                : 'bg-slate-700 text-white hover:bg-slate-600'
-            }`}
-          >
-            {page}
-          </button>
-        );
-      })}
+      <div className="flex space-x-1">
+        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+          const page = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+          if (page > totalPages) return null;
+          
+          return (
+            <button
+              key={page}
+              onClick={() => onPageChange(page)}
+              className={`px-3 py-1.5 rounded-lg font-medium transition-all text-sm ${
+                currentPage === page
+                  ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                  : 'bg-slate-700 text-white hover:bg-slate-600'
+              }`}
+            >
+              {page}
+            </button>
+          );
+        })}
+      </div>
 
       <button
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
-        className="px-3 py-1 bg-slate-700 text-white rounded disabled:opacity-50"
+        className="px-3 py-1.5 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1 text-sm"
       >
-        →
+        <span>Next</span>
+        <span>→</span>
       </button>
 
-      <span className="text-slate-400 text-sm">
+      <span className="text-slate-400 text-xs ml-3">
         Page {currentPage} of {totalPages}
       </span>
     </div>
@@ -162,26 +187,25 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
   const wallet = useTonWallet();
   const [walletConnected, setWalletConnected] = useState<boolean>(false);
   const [settings, setSettings] = useState<{ autoWithdrawals: boolean } | null>(null);
+  const [isConnecting, setIsConnecting] = useState<boolean>(false);
 
   // Track if we've already updated the wallet address for this session
   const walletAddressUpdatedRef = useRef<string>('');
+  const connectionTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Load settings on component mount
- useEffect(() => {
-  const loadSettings = async () => {
-    try {
-      const settingsData = await fetchSettings();
-      setSettings(settingsData);
-      console.log('Loaded settings:', settingsData); // Debug log
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-      // Set default if failed to load
-      setSettings({ autoWithdrawals: false });
-    }
-  };
-  loadSettings();
-}, []);
-
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settingsData = await fetchSettings();
+        setSettings(settingsData);
+      } catch (error) {
+        console.error('Failed to load settings:', error);
+        setSettings({ autoWithdrawals: false });
+      }
+    };
+    loadSettings();
+  }, []);
 
   // Function to update user's wallet address in backend
   const updateUserWallet = useCallback(async (walletAddress: string) => {
@@ -190,7 +214,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       return;
     }
 
-    // Check if we've already updated this wallet address for this user in current session
     if (walletAddressUpdatedRef.current === walletAddress) {
       return;
     }
@@ -201,7 +224,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       if (result.success && result.user) {
         setUser(result.user);
         walletAddressUpdatedRef.current = walletAddress;
-        console.log('Wallet address updated successfully');
       } else {
         console.error('Failed to update wallet address:', result.message);
       }
@@ -210,59 +232,44 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     }
   }, [user, setUser]);
 
-  // Event listener for wallet connection changes
+  // Enhanced wallet connection handler
   useEffect(() => {
     const handleWalletChange = () => {
       if (wallet && wallet.account.address && user) {
-        // Check if wallet just connected or address changed
         if (!walletConnected || walletAddressUpdatedRef.current !== wallet.account.address) {
           setWalletConnected(true);
+          setIsConnecting(false);
+          clearTimeout(connectionTimeoutRef.current);
           updateUserWallet(wallet.account.address);
         }
       } else if (walletConnected && !wallet) {
-        // Wallet disconnected
         setWalletConnected(false);
-        walletAddressUpdatedRef.current = ''; // Reset tracking
+        walletAddressUpdatedRef.current = '';
       }
     };
 
-    // Initial check
     handleWalletChange();
-
-    // Set up interval to check for wallet changes (fallback for some edge cases)
-    const intervalId = setInterval(handleWalletChange, 1000);
-
-    // Cleanup
-    return () => {
-      clearInterval(intervalId);
-    };
   }, [wallet, user, walletConnected, updateUserWallet]);
 
-  // More robust event listener using tonConnectUI events
+  // Reset connecting state when modal closes without connection
   useEffect(() => {
-    const handleStatusChange = (status: any) => {
-      if (status && status.account && status.account.address && user) {
-        const currentAddress = status.account.address;
-        if (walletAddressUpdatedRef.current !== currentAddress) {
-          updateUserWallet(currentAddress);
+    const checkModalClosed = () => {
+      if (isConnecting && !wallet) {
+        const modal = document.querySelector('.ton-connect-modal');
+        if (!modal) {
+          setIsConnecting(false);
+          clearTimeout(connectionTimeoutRef.current);
         }
       }
     };
 
-    // Listen for connection status changes
-    tonConnectUI.onStatusChange(handleStatusChange);
+    const intervalId = setInterval(checkModalClosed, 1000);
 
-    // Cleanup
     return () => {
-      tonConnectUI.onStatusChange(handleStatusChange);
+      clearInterval(intervalId);
+      clearTimeout(connectionTimeoutRef.current);
     };
-  }, [tonConnectUI, user, updateUserWallet]);
-
-  // Effect to reset wallet address tracking when user changes
-  useEffect(() => {
-    walletAddressUpdatedRef.current = '';
-    setWalletConnected(false);
-  }, [user?.id]);
+  }, [isConnecting, wallet]);
 
   // Calculate available TON balance from coins only
   const availableTonBalance = useMemo(() => {
@@ -312,10 +319,49 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     return { isValid: true, message: "" };
   };
 
+  const handleConnectWallet = async () => {
+    setIsConnecting(true);
+    
+    connectionTimeoutRef.current = setTimeout(() => {
+      if (isConnecting && !wallet) {
+        console.log('Connection timeout - modal was likely closed without connecting');
+        setIsConnecting(false);
+      }
+    }, 30000);
+
+    try {
+      await tonConnectUI.openModal();
+      
+      setTimeout(() => {
+        if (isConnecting && !wallet) {
+          const modal = document.querySelector('.ton-connect-modal');
+          if (!modal) {
+            setIsConnecting(false);
+            clearTimeout(connectionTimeoutRef.current);
+          }
+        }
+      }, 5000);
+      
+    } catch (error) {
+      console.error('Failed to open wallet modal:', error);
+      setIsConnecting(false);
+      clearTimeout(connectionTimeoutRef.current);
+    }
+  };
+
+  const handleDisconnectWallet = async () => {
+    try {
+      await tonConnectUI.disconnect();
+      setIsConnecting(false);
+      clearTimeout(connectionTimeoutRef.current);
+    } catch (error) {
+      console.error('Failed to disconnect wallet:', error);
+    }
+  };
+
   const handleWithdraw = async () => {
     if (!wallet || !user || !withdrawAmount) return;
     
-    // Ensure wallet address is updated before proceeding with withdrawal
     if (wallet.account.address && walletAddressUpdatedRef.current !== wallet.account.address) {
       await updateUserWallet(wallet.account.address);
     }
@@ -339,7 +385,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
 
       setUser(result.user);
 
-      // Only send blockchain transaction if auto-withdrawals are enabled
       if (settings?.autoWithdrawals) {
         const transaction = {
           validUntil: Math.floor(Date.now() / 1000) + 300,
@@ -365,7 +410,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         await loadTransactions();
         alert(`Successfully withdrew ${amount} TON to your wallet!`);
       } else {
-        // Manual approval mode - just show success message for submission
         setWithdrawAmount('');
         await loadTransactions();
         alert(`Withdrawal request for ${amount} TON submitted for admin approval! You will receive your TON once approved.`);
@@ -376,7 +420,6 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
       const errorMessage = error.message || "Transaction was cancelled or failed.";
       
       if (user) {
-        // Revert the balance - we'll need to handle this in the backend
         const revertedUser = { ...user };
         setUser(revertedUser);
       }
@@ -394,99 +437,166 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     setWithdrawAmount(availableTonBalance.toFixed(6));
   };
 
-  const formatAddress = (address: string) => `${address.slice(0, 4)}...${address.slice(-4)}`;
-
-  // Enhanced wallet connection status component
+  // Enhanced Wallet Status Component
   const WalletStatus = () => {
-    if (!wallet) {
+    if (isConnecting) {
       return (
-        <div className="text-center">
-          <p className="text-slate-300">Connect your TON wallet to withdraw funds.</p>
+        <div className="text-center p-4 bg-blue-500/10 border-2 border-blue-500/30 rounded-xl">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-blue-400 font-semibold text-base">Connecting Wallet...</p>
+          <p className="text-blue-300 text-xs mt-1">Please confirm the connection in your wallet app</p>
           <button
-            onClick={() => tonConnectUI.openModal()}
-            className="mt-2 bg-green-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
+            onClick={() => {
+              setIsConnecting(false);
+              clearTimeout(connectionTimeoutRef.current);
+            }}
+            className="mt-3 bg-red-500/20 text-red-400 font-semibold py-1.5 px-3 rounded-lg hover:bg-red-500/30 transition-colors border border-red-500/30 text-xs"
           >
-            Connect Wallet
+            Cancel Connection
           </button>
         </div>
       );
     }
 
+    if (!wallet) {
+      return (
+        <div className="text-center p-4 bg-slate-700/50 border-2 border-slate-600 rounded-xl">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <span className="text-xl">🔗</span>
+          </div>
+          <h3 className="text-white font-bold text-lg mb-1">Connect Your Wallet</h3>
+          <p className="text-slate-300 text-sm mb-4">Connect your TON wallet to withdraw funds securely</p>
+          <button
+            onClick={handleConnectWallet}
+            className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:from-blue-600 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-blue-500/25 flex items-center justify-center space-x-2 text-sm"
+          >
+            <span className="text-base">👛</span>
+            <span>Connect TON Wallet</span>
+          </button>
+          <p className="text-slate-400 text-xs mt-3">
+            Supported: Tonkeeper, TonHub, and other TON wallets
+          </p>
+        </div>
+      );
+    }
+
     return (
-      <div className="text-center">
-        <p className="text-slate-300">Connected Wallet:</p>
-        <p className="font-mono text-green-500">{formatAddress(wallet.account.address)}</p>
+      <div className="text-center p-4 bg-green-500/10 border-2 border-green-500/30 rounded-xl">
+        <div className="w-8 h-8 bg-green-500 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <span className="text-lg">✓</span>
+        </div>
+        <h3 className="text-green-400 font-bold text-base mb-1">Wallet Connected</h3>
+        <div className="bg-slate-700/50 p-2 rounded-lg mb-3">
+          <p className="text-slate-300 text-xs mb-1">Connected Address:</p>
+          <p className="font-mono text-green-400 text-xs break-all">{wallet.account.address}</p>
+        </div>
         {user?.wallet_address ? (
-          <div className="mt-1">
-            <p className="text-xs text-green-400">
-              ✓ Wallet address saved to your account
-            </p>
+          <div className="space-y-1">
+            <div className="flex items-center justify-center space-x-1 text-green-400 text-xs">
+              <span>✓</span>
+              <span>Wallet address saved to your account</span>
+            </div>
             {user.wallet_address !== wallet.account.address && (
-              <p className="text-xs text-yellow-400 mt-1">
-                ⚠️ Different from previously saved address
-              </p>
+              <div className="flex items-center justify-center space-x-1 text-yellow-400 text-xs">
+                <span>⚠️</span>
+                <span>Different from previously saved address</span>
+              </div>
             )}
           </div>
         ) : (
-          <p className="text-xs text-yellow-400 mt-1">
-            ⏳ Saving wallet address...
-          </p>
+          <div className="flex items-center justify-center space-x-1 text-yellow-400 text-xs">
+            <div className="w-3 h-3 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+            <span>Saving wallet address...</span>
+          </div>
         )}
+        <button
+          onClick={handleDisconnectWallet}
+          className="mt-3 w-full bg-red-500/20 text-red-400 font-semibold py-2 px-3 rounded-lg hover:bg-red-500/30 transition-colors border border-red-500/30 text-sm"
+        >
+          Disconnect Wallet
+        </button>
       </div>
     );
   };
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearTimeout(connectionTimeoutRef.current);
+    };
+  }, []);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 px-2">
       {/* Balance Section */}
-      <div className="bg-slate-800 p-6 rounded-xl">
-        <h2 className="text-2xl font-bold text-white text-center mb-4">Your Balance</h2>
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 rounded-2xl border border-slate-700/50 shadow-xl">
+        <h2 className="text-xl font-bold text-white text-center mb-4">Your Balance</h2>
         
         {/* Available TON Balance from Coins */}
-        <div className="text-center mb-6">
-          <p className="text-slate-300">Available TON Balance (from Coins)</p>
-          <p className="text-4xl font-bold text-white my-1">{availableTonBalance.toFixed(6)} TON</p>
-          <p className="text-green-400 font-semibold">
+        <div className="text-center mb-4">
+          <p className="text-slate-300 text-sm mb-1">Available TON Balance (from Coins)</p>
+          <p className="text-3xl font-bold text-white my-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+            {availableTonBalance.toFixed(6)} TON
+          </p>
+          <p className="text-green-400 font-semibold text-base">
             ≈ {availableCoinsBalance.toLocaleString()} Coins
           </p>
         </div>
 
         {/* Breakdown */}
-        <div className="grid grid-cols-1 gap-4 text-sm max-w-md mx-auto">
-          <div className="bg-slate-700/50 p-4 rounded-lg">
-            <p className="text-slate-300">Coins Balance</p>
+        <div className="grid grid-cols-1 gap-3 max-w-2xl mx-auto">
+          <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50">
+            <p className="text-slate-300 text-xs mb-1">Coins Balance</p>
             <p className="text-yellow-400 font-bold text-2xl">
-              {availableCoinsBalance.toLocaleString()} Coins
+              {availableCoinsBalance.toLocaleString()}
             </p>
-            <p className="text-green-400 text-lg mt-1">
-              ≈ {availableTonBalance.toFixed(6)} TON
+            <p className="text-slate-400 text-sm">Coins</p>
+          </div>
+          <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50">
+            <p className="text-slate-300 text-xs mb-1">TON Value</p>
+            <p className="text-green-400 font-bold text-2xl">
+              {availableTonBalance.toFixed(6)}
             </p>
+            <p className="text-slate-400 text-sm">TON</p>
           </div>
         </div>
 
         {/* Conversion Info */}
-        <div className="text-xs text-slate-400 text-center mt-4">
-          <p>💱 Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins</p>
+        <div className="text-center mt-4 p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
+          <p className="text-blue-400 font-semibold text-sm">
+            💱 Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins
+          </p>
         </div>
       </div>
 
-      {/* Withdrawal Form */}
-      <div className="bg-slate-800 p-6 rounded-xl space-y-4">
+      {/* Withdrawal Section */}
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 rounded-2xl border border-slate-700/50 shadow-xl">
+        <h2 className="text-lg font-bold text-white text-center mb-4">Withdraw Funds</h2>
+        
         <WalletStatus />
 
         {/* Approval Status Notice */}
         {settings && (
-          <div className={`p-4 rounded-xl ${
+          <div className={`p-3 rounded-xl mt-4 ${
             settings.autoWithdrawals 
-              ? 'bg-green-500/10 border border-green-500/20' 
-              : 'bg-blue-500/10 border border-blue-500/20'
+              ? 'bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20' 
+              : 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20'
           }`}>
-            <h3 className={`font-bold mb-2 ${
-              settings.autoWithdrawals ? 'text-green-400' : 'text-blue-400'
-            }`}>
-              {settings.autoWithdrawals ? '✓ Automatic Withdrawals' : '⏳ Manual Approval Required'}
-            </h3>
-            <p className={`text-sm ${
+            <div className="flex items-center space-x-2 mb-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                settings.autoWithdrawals ? 'bg-green-500' : 'bg-blue-500'
+              }`}>
+                <span className="text-white text-xs">
+                  {settings.autoWithdrawals ? '✓' : '⏳'}
+                </span>
+              </div>
+              <h3 className={`font-bold text-base ${
+                settings.autoWithdrawals ? 'text-green-400' : 'text-blue-400'
+              }`}>
+                {settings.autoWithdrawals ? 'Automatic Withdrawals' : 'Manual Approval Required'}
+              </h3>
+            </div>
+            <p className={`text-xs ${
               settings.autoWithdrawals ? 'text-green-300' : 'text-blue-300'
             }`}>
               {settings.autoWithdrawals 
@@ -498,88 +608,88 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         )}
 
         {/* Amount Input */}
-        <div className="space-y-2">
-          <label className="text-slate-300 text-sm">Withdrawal Amount (TON)</label>
-          <div className="relative">
-            <input
-              type="number"
-              value={withdrawAmount}
-              onChange={(e) => setWithdrawAmount(e.target.value)}
-              placeholder={`Min: ${minWithdrawal} TON`}
-              min={minWithdrawal}
-              max={availableTonBalance}
-              step="0.001"
-              className="w-full bg-slate-700 text-white p-3 rounded-lg border border-slate-600 focus:border-green-500 focus:outline-none"
-              disabled={!wallet || isWithdrawing}
-            />
-            <button
-              onClick={handleMaxWithdraw}
-              disabled={!wallet || isWithdrawing}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-slate-600 text-xs text-white px-2 py-1 rounded hover:bg-slate-500 transition-colors"
-            >
-              MAX
-            </button>
+        {wallet && (
+          <div className="space-y-3 mt-4">
+            <label className="text-slate-300 text-base font-semibold">Withdrawal Amount (TON)</label>
+            <div className="relative">
+              <input
+                type="number"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                placeholder={`Minimum: ${minWithdrawal} TON`}
+                min={minWithdrawal}
+                max={availableTonBalance}
+                step="0.001"
+                className="w-full bg-slate-700 text-white p-3 rounded-xl border-2 border-slate-600 focus:border-blue-500 focus:outline-none text-base transition-colors"
+                disabled={!wallet || isWithdrawing}
+              />
+              <button
+                onClick={handleMaxWithdraw}
+                disabled={!wallet || isWithdrawing}
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-600 transition-colors disabled:bg-slate-600"
+              >
+                MAX
+              </button>
+            </div>
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>Minimum: {minWithdrawal} TON</span>
+              <span>Available: {availableTonBalance.toFixed(6)} TON</span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex space-x-3 pt-3">
+              <button
+                onClick={handleWithdraw}
+                disabled={!wallet || !withdrawAmount || isWithdrawing || !user?.wallet_address}
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 hover:from-green-600 hover:to-emerald-700 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 flex items-center justify-center space-x-2 text-base"
+              >
+                {isWithdrawing ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm">{settings?.autoWithdrawals ? 'Processing...' : 'Submitting...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>💸</span>
+                    <span className="text-sm">{settings?.autoWithdrawals ? 'Withdraw TON' : 'Submit for Approval'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Fee Information */}
+            <div className="text-center p-3 bg-slate-700/30 rounded-xl mt-3">
+              <p className="text-slate-400 text-xs">
+                ⚠️ Network fees will be deducted from your withdrawal amount
+              </p>
+              <p className="text-slate-400 text-xs mt-1">
+                Estimated fee: ~0.05 TON
+              </p>
+            </div>
           </div>
-          <div className="flex justify-between text-xs text-slate-400">
-            <span>Min: {minWithdrawal} TON</span>
-            <span>Available: {availableTonBalance.toFixed(6)} TON</span>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex space-x-3">
-          {wallet && (
-            <button
-              onClick={() => tonConnectUI.disconnect()}
-              className="w-full bg-red-500 text-white font-bold py-3 rounded-lg hover:bg-red-600 transition-colors"
-            >
-              Disconnect Wallet
-            </button>
-          )}
-
-          <button
-            onClick={handleWithdraw}
-            disabled={!wallet || !withdrawAmount || isWithdrawing || !user?.wallet_address}
-            className="w-full bg-green-500 text-white font-bold py-3 rounded-lg transition-colors hover:bg-green-600 disabled:bg-slate-600 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {isWithdrawing ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                {settings?.autoWithdrawals ? 'Processing...' : 'Submitting...'}
-              </>
-            ) : (
-              settings?.autoWithdrawals ? 'Withdraw TON' : 'Submit for Approval'
-            )}
-          </button>
-        </div>
-
-        {/* Fee Information */}
-        <div className="text-xs text-slate-400 text-center">
-          <p>⚠️ Network fees will be deducted from your withdrawal amount</p>
-          <p>Estimated fee: ~0.05 TON</p>
-        </div>
+        )}
       </div>
 
       {/* Transaction History */}
-      <div>
+      <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-4 rounded-2xl border border-slate-700/50 shadow-xl">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">Withdrawal History</h2>
-          <span className="text-slate-400 text-sm">
-            {transactionsData.total} total transactions
+          <h2 className="text-lg font-bold text-white">Withdrawal History</h2>
+          <span className="text-slate-400 text-xs bg-slate-700/50 px-2 py-1 rounded-full">
+            {transactionsData.total} total
           </span>
         </div>
 
         <TransactionsFilters filters={filters} onFiltersChange={setFilters} />
 
-        <div className="bg-slate-800 p-4 rounded-xl">
+        <div className="space-y-2">
           {isLoading ? (
             <div className="text-center py-8">
-              <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <p className="text-slate-400 mt-2">Loading transactions...</p>
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+              <p className="text-slate-400 text-sm">Loading transactions...</p>
             </div>
           ) : transactionsData.transactions.length > 0 ? (
             <>
-              <div className="max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                 {transactionsData.transactions.map(tx => (
                   <TransactionRow key={tx.id} tx={tx} />
                 ))}
@@ -592,20 +702,31 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
               />
             </>
           ) : (
-            <p className="text-center text-slate-400 py-8">No withdrawal transactions found.</p>
+            <div className="text-center py-8 bg-slate-700/30 rounded-xl">
+              <div className="w-12 h-12 bg-slate-600 rounded-xl flex items-center justify-center mx-auto mb-3">
+                <span className="text-xl">📝</span>
+              </div>
+              <p className="text-slate-400 text-sm">No withdrawal transactions found</p>
+              <p className="text-slate-500 text-xs mt-1">Your withdrawal history will appear here</p>
+            </div>
           )}
         </div>
       </div>
 
       {/* Important Notice */}
-      <div className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-xl">
-        <h3 className="text-yellow-400 font-bold mb-2">⚠️ Important Notice</h3>
-        <p className="text-yellow-300 text-sm">
+      <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 p-4 rounded-xl">
+        <div className="flex items-center space-x-2 mb-2">
+          <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+            <span className="text-white text-xs">⚠️</span>
+          </div>
+          <h3 className="text-yellow-400 font-bold text-base">Important Notice</h3>
+        </div>
+        <p className="text-yellow-300 text-xs">
           Withdrawals are now processed using coins only. Your coins will be automatically converted to TON.
           Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins.
         </p>
         {!settings?.autoWithdrawals && (
-          <p className="text-yellow-300 text-sm mt-2">
+          <p className="text-yellow-300 text-xs mt-2">
             ⏳ <strong>Manual Approval Mode:</strong> Your withdrawal requests will be reviewed by an administrator. 
             You will receive your TON once approved.
           </p>

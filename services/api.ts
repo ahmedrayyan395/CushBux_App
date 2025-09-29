@@ -36,8 +36,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 // 
 // const API_BASE_URL = 'https://76eb190d6536.ngrok-free.app';
 
@@ -429,11 +429,51 @@ export const loginWithTelegram = async (telegramInitData: string): Promise<User>
 
 
 // Campaign API functions - FIXED to use apiFetch correctly
+// export const fetchAllCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
+//   return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/usercampaigns/unclaimed?user_id=${userId}`, {
+//     method: 'GET',
+//   });
+// };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Updated Campaign API functions with limits
 export const fetchAllCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
-  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/usercampaigns/unclaimed?user_id=${userId}`, {
+  return apiFetch<(UserCampaign | PartnerCampaign)[]>(`/usercampaigns/unclaimed?user_id=${userId}&limit=5`, {
     method: 'GET',
   });
 };
+
+// Updated Daily Tasks API function
+export const fetchIncompleteDailyTasks = async (userId: string): Promise<DailyTask[]> => {
+  try {
+    const response = await apiFetch<DailyTask[]>(`/daily-tasks/incomplete?user_id=${userId}&include_in_progress=true`, { 
+      method: 'GET' 
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching incomplete daily tasks:', error);
+    return [];
+  }
+};
+
+
+
+
+
+
 
 
 export const fetchUserCampaignsAPI = async (userId: number): Promise<(UserCampaign | PartnerCampaign)[]> => {
@@ -641,18 +681,18 @@ export const fetchDailyTasksAPI = async () => {
 
 
 // services/api.ts
-export const fetchIncompleteDailyTasks = async (userId: string): Promise<DailyTask[]> => {
-  try {
-    const response = await apiFetch<DailyTask[]>(`/daily-tasks/incomplete?user_id=${userId}`, { 
-      method: 'GET' 
-    });
+// export const fetchIncompleteDailyTasks = async (userId: string): Promise<DailyTask[]> => {
+//   try {
+//     const response = await apiFetch<DailyTask[]>(`/daily-tasks/incomplete?user_id=${userId}`, { 
+//       method: 'GET' 
+//     });
     
-    return response;
-  } catch (error) {
-    console.error('Error fetching incomplete daily tasks:', error);
-    return [];
-  }
-};
+//     return response;
+//   } catch (error) {
+//     console.error('Error fetching incomplete daily tasks:', error);
+//     return [];
+//   }
+// };
 
 
 // services/api.ts
