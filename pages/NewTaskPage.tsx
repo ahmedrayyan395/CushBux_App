@@ -371,12 +371,16 @@ const NewTaskPage: React.FC<NewTaskPageProps> = ({ user, setUser }) => {
     if (selectedTier) {
       const baseCost = selectedTier.cost;
       const subscriptionCost = (selectedCategory === 'Social' && checkSubscription) ? baseCost * 0.30 : 0;
-      const finalCost = baseCost + subscriptionCost;
+      
+      // Calculate language cost: 0.25 TON for each additional language beyond the first one
+      const languageCost = selectedLanguages.length > 1 ? (selectedLanguages.length - 1) * 0.25 : 0;
+      
+      const finalCost = baseCost + subscriptionCost + languageCost;
       setTotalCost(finalCost);
     } else {
         setTotalCost(0);
     }
-  }, [selectedTier, checkSubscription, selectedCategory]);
+  }, [selectedTier, checkSubscription, selectedCategory, selectedLanguages]);
   
   const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
 

@@ -342,12 +342,16 @@ const NewPartnerTaskPage: React.FC<NewPartnerTaskPageProps> = ({ user, setUser }
         const baseCost = selectedTier.cost;
         const partnerBaseCost = baseCost * PARTNER_MULTIPLIER;
         const levelAdjustedCost = partnerBaseCost * selectedLevel;
-        const finalCost = levelAdjustedCost;
+        
+        // Calculate language cost: 0.25 TON for each additional language beyond the first one
+        const languageCost = selectedLanguages.length > 1 ? (selectedLanguages.length - 1) * 0.25 : 0;
+        
+        const finalCost = levelAdjustedCost + languageCost;
         setTotalCost(finalCost);
     } else {
         setTotalCost(0);
     }
-  }, [selectedTier, selectedLevel]);
+  }, [selectedTier, selectedLevel, selectedLanguages]);
 
   const MERCHANT_WALLET_ADDRESS = "UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0";
  
