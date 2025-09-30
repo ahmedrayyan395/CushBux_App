@@ -53,64 +53,64 @@ const TransactionRow: React.FC<{ tx: Transaction }> = React.memo(({ tx }) => {
 TransactionRow.displayName = 'TransactionRow';
 
 // Filters Component
-const TransactionsFilters: React.FC<{
-  filters: TransactionsFilters;
-  onFiltersChange: (filters: TransactionsFilters) => void;
-}> = ({ filters, onFiltersChange }) => {
-  return (
-    <div className="bg-slate-800 p-4 rounded-xl mb-4 border border-slate-700/50">
-      <h3 className="text-white font-semibold mb-3 text-base">Filter Transactions</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="text-slate-300 text-xs block mb-1">Status</label>
-          <select
-            value={filters.status || ''}
-            onChange={(e) => onFiltersChange({ ...filters, status: e.target.value || undefined, page: 1 })}
-            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
-          >
-            <option value="">All Status</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="PENDING">Pending</option>
-            <option value="FAILED">Failed</option>
-          </select>
-        </div>
+// const TransactionsFilters: React.FC<{
+//   filters: TransactionsFilters;
+//   onFiltersChange: (filters: TransactionsFilters) => void;
+// }> = ({ filters, onFiltersChange }) => {
+//   return (
+//     <div className="bg-slate-800 p-4 rounded-xl mb-4 border border-slate-700/50">
+//       <h3 className="text-white font-semibold mb-3 text-base">Filter Transactions</h3>
+//       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+//         <div>
+//           <label className="text-slate-300 text-xs block mb-1">Status</label>
+//           <select
+//             value={filters.status || ''}
+//             onChange={(e) => onFiltersChange({ ...filters, status: e.target.value || undefined, page: 1 })}
+//             className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+//           >
+//             <option value="">All Status</option>
+//             <option value="COMPLETED">Completed</option>
+//             <option value="PENDING">Pending</option>
+//             <option value="FAILED">Failed</option>
+//           </select>
+//         </div>
 
-        <div>
-          <label className="text-slate-300 text-xs block mb-1">Currency</label>
-          <select
-            value={filters.currency || ''}
-            onChange={(e) => onFiltersChange({ ...filters, currency: e.target.value || undefined, page: 1 })}
-            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
-          >
-            <option value="">All Currencies</option>
-            <option value="TON">TON</option>
-            <option value="COINS">Coins</option>
-          </select>
-        </div>
+//         <div>
+//           <label className="text-slate-300 text-xs block mb-1">Currency</label>
+//           <select
+//             value={filters.currency || ''}
+//             onChange={(e) => onFiltersChange({ ...filters, currency: e.target.value || undefined, page: 1 })}
+//             className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+//           >
+//             <option value="">All Currencies</option>
+//             <option value="TON">TON</option>
+//             <option value="COINS">Coins</option>
+//           </select>
+//         </div>
 
-        <div>
-          <label className="text-slate-300 text-xs block mb-1">From Date</label>
-          <input
-            type="date"
-            value={filters.startDate || ''}
-            onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined, page: 1 })}
-            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
-          />
-        </div>
+//         <div>
+//           <label className="text-slate-300 text-xs block mb-1">From Date</label>
+//           <input
+//             type="date"
+//             value={filters.startDate || ''}
+//             onChange={(e) => onFiltersChange({ ...filters, startDate: e.target.value || undefined, page: 1 })}
+//             className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+//           />
+//         </div>
 
-        <div>
-          <label className="text-slate-300 text-xs block mb-1">To Date</label>
-          <input
-            type="date"
-            value={filters.endDate || ''}
-            onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined, page: 1 })}
-            className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
-          />
-        </div>
-      </div>
-    </div>
-  );
-};
+//         <div>
+//           <label className="text-slate-300 text-xs block mb-1">To Date</label>
+//           <input
+//             type="date"
+//             value={filters.endDate || ''}
+//             onChange={(e) => onFiltersChange({ ...filters, endDate: e.target.value || undefined, page: 1 })}
+//             className="w-full bg-slate-700 text-white p-2 rounded-lg border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors text-sm"
+//           />
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
 
 // Pagination Component
 const Pagination: React.FC<{
@@ -533,33 +533,17 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         <h2 className="text-xl font-bold text-white text-center mb-4">Your Balance</h2>
         
         {/* Available TON Balance from Coins */}
-        <div className="text-center mb-4">
-          <p className="text-slate-300 text-sm mb-1">Available TON Balance (from Coins)</p>
-          <p className="text-3xl font-bold text-white my-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-            {availableTonBalance.toFixed(6)} TON
-          </p>
+       <div className="text-center mb-4">
           <p className="text-green-400 font-semibold text-base">
-            ≈ {availableCoinsBalance.toLocaleString()} Coins
+             {availableCoinsBalance.toLocaleString()} Coins
           </p>
+          <p className="text-3xl font-bold text-white my-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+           ≈ {availableTonBalance.toFixed(6)} TON
+          </p>
+          <p className="text-slate-300 text-sm mb-1">Available TON Balance (from Coins)</p>
         </div>
 
-        {/* Breakdown */}
-        <div className="grid grid-cols-1 gap-3 max-w-2xl mx-auto">
-          <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50">
-            <p className="text-slate-300 text-xs mb-1">Coins Balance</p>
-            <p className="text-yellow-400 font-bold text-2xl">
-              {availableCoinsBalance.toLocaleString()}
-            </p>
-            <p className="text-slate-400 text-sm">Coins</p>
-          </div>
-          <div className="bg-slate-700/50 p-3 rounded-xl border border-slate-600/50">
-            <p className="text-slate-300 text-xs mb-1">TON Value</p>
-            <p className="text-green-400 font-bold text-2xl">
-              {availableTonBalance.toFixed(6)}
-            </p>
-            <p className="text-slate-400 text-sm">TON</p>
-          </div>
-        </div>
+       
 
         {/* Conversion Info */}
         <div className="text-center mt-4 p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
@@ -679,7 +663,7 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
           </span>
         </div>
 
-        <TransactionsFilters filters={filters} onFiltersChange={setFilters} />
+        {/* <TransactionsFilters filters={filters} onFiltersChange={setFilters} /> */}
 
         <div className="space-y-2">
           {isLoading ? (

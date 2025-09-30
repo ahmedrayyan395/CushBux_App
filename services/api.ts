@@ -36,43 +36,44 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
 // 
 // const API_BASE_URL = 'https://76eb190d6536.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
 
-export const setAuthToken = (token: string) => {
-  authToken = token;
-  localStorage.setItem('auth_token', token);
-};
+// export const setAuthToken = (token: string) => {
+//   authToken = token;
+//   localStorage.setItem('auth_token', token);
+// };
 
-export const getAuthToken = (): string | null => {
-  if (!authToken) {
-    authToken = localStorage.getItem('auth_token');
-  }
-  return authToken;
-};
+// export const getAuthToken = (): string | null => {
+//   if (!authToken) {
+//     authToken = localStorage.getItem('auth_token');
+//   }
+//   return authToken;
+// };
 
-export const clearAuthToken = () => {
-  authToken = null;
-  localStorage.removeItem('auth_token');
-};
+// export const clearAuthToken = () => {
+//   authToken = null;
+//   localStorage.removeItem('auth_token');
+// };
 
 // Admin Token management
-export const setAdminToken = (token: string) => {
-  localStorage.setItem('admin_token', token);
-};
+// export const setAdminToken = (token: string) => {
+//   localStorage.setItem('admin_token', token);
+// };
 
-export const getAdminToken = (): string | null => {
-  return localStorage.getItem('admin_token');
-};
+// export const getAdminToken = (): string | null => {
+//   return localStorage.getItem('admin_token');
+// };
 
-export const clearAdminToken = () => {
-  localStorage.removeItem('admin_token');
-};
+
+// export const clearAdminToken = () => {
+//   localStorage.removeItem('admin_token');
+// };
 
 // Token refresh function
 export const refreshToken = async (): Promise<boolean> => {
@@ -101,105 +102,8 @@ export const refreshToken = async (): Promise<boolean> => {
 };
 
 // Handle unauthorized responses
-const handleUnauthorized = async (): Promise<boolean> => {
-  try {
-    const refreshed = await refreshToken();
-    return refreshed;
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-    return false;
-  }
-};
 
 
-
-// Main API fetch function with JWT support
-// export const apiFetch = async <T = any>(
-//   endpoint: string,
-//   options: RequestInit = {},
-//   retry = true
-// ): Promise<T> => {
-//   const headers: HeadersInit = {
-//     'Content-Type': 'application/json',
-//     ...options.headers,
-//   };
-
-//   // Add JWT token if available (for regular users)
-//   const token = getAuthToken();
-//   if (token) {
-//     headers['Authorization'] = `Bearer ${token}`;
-//     console.log(`[apiFetch] Using user token for ${endpoint}`);
-//   }
-
-//   // Add admin token if available (for admin routes)
-//   const adminToken = getAdminToken();
-//   if (adminToken && !token) {
-//     headers['Authorization'] = `Bearer ${adminToken}`;
-//     console.log(`[apiFetch] Using admin token for ${endpoint}`);
-//   }
-
-//   console.log(`[apiFetch] Starting request: ${endpoint}`, {
-//     method: options.method || 'GET',
-//     headers,
-//     body: options.body,
-//   });
-
-
-
-//   try {
-//     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-//       ...options,
-//       headers,
-//       // credentials: 'include',
-//     });
-
-//     console.log(`[apiFetch] Received response for ${endpoint}:`, {
-//       status: response.status,
-//     });
-
-//     // Handle unauthorized responses (token expired)
-//     if (response.status === 401 && retry) {
-//       console.warn(`[apiFetch] 401 Unauthorized - trying to refresh token for ${endpoint}`);
-//       const refreshed = await handleUnauthorized();
-//       if (refreshed) {
-//         console.log(`[apiFetch] Token refreshed, retrying request to ${endpoint}`);
-//         return apiFetch(endpoint, options, false);
-//       }
-//     }
-
-//     if (response.status === 401) {
-//       clearAuthToken();
-//       clearAdminToken();
-//       window.dispatchEvent(new Event('unauthorized'));
-//       console.error(`[apiFetch] Authentication failed for ${endpoint}`);
-//       throw {
-//         status: response.status,
-//         data: { message: 'Authentication required' },
-//       };
-//     }
-
-//     if (!response.ok) {
-//       const errorData = await response.json().catch(() => ({
-//         message: response.statusText,
-//       }));
-//       console.error(`[apiFetch] Error response from ${endpoint}:`, errorData);
-//       throw { status: response.status, data: errorData };
-//     }
-
-//     if (response.status === 204) {
-//       console.log(`[apiFetch] No content (204) from ${endpoint}`);
-//       return null as T;
-//     }
-
-//     const data = await response.json();
-//     console.log(`[apiFetch] Success response from ${endpoint}:`, data);
-//     return data as T;
-
-//   } catch (error) {
-//     console.error(`[apiFetch] API Error on ${endpoint}:`, error);
-//     throw error;
-//   }
-// };
 
 export const apiFetch = async <T = any>(
   endpoint: string,
@@ -211,143 +115,267 @@ export const apiFetch = async <T = any>(
     ...options.headers,
   };
 
-  // Add JWT token if available (for regular users)
-  const token = getAuthToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-    console.log(`[apiFetch] Using user token for ${endpoint}`);
-  }
-
-  // Add admin token if available (for admin routes)
+  // FIXED: Always prioritize admin token for admin routes
   const adminToken = getAdminToken();
-  if (adminToken && !token) {
+  const userToken = getAuthToken();
+  
+  if (adminToken && endpoint.includes('/admin/')) {
+    // Use admin token for all admin routes, regardless of user token
     headers['Authorization'] = `Bearer ${adminToken}`;
-    console.log(`[apiFetch] Using admin token for ${endpoint}`);
+    console.log(`[apiFetch] Using ADMIN token for ${endpoint}`);
+  } else if (userToken) {
+    // Use user token for non-admin routes
+    headers['Authorization'] = `Bearer ${userToken}`;
+    console.log(`[apiFetch] Using USER token for ${endpoint}`);
   }
 
   console.log(`[apiFetch] Starting request: ${endpoint}`, {
     method: options.method || 'GET',
     headers,
-    body: options.body,
+    hasBody: !!options.body,
   });
 
   try {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers,
-      // credentials: 'same-origin',
     });
 
     console.log(`[apiFetch] Received response for ${endpoint}:`, {
       status: response.status,
       statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
     });
 
-    // First, get the response as text to see what we're dealing with
+    // Get response as text first
     const responseText = await response.text();
-    console.log(`[apiFetch] Raw response text (first 200 chars):`, responseText.substring(0, 200));
-
-    // Check if this is HTML instead of JSON
+    
+    // Check if this is HTML instead of JSON (server error page)
     if (responseText.trim().startsWith('<!DOCTYPE') || 
         responseText.trim().startsWith('<html') || 
         responseText.includes('</html>')) {
       console.error(`[apiFetch] HTML detected in response for ${endpoint}`);
       
-      // Handle unauthorized responses (token expired) even for HTML responses
-      if (response.status === 401 && retry) {
-        console.warn(`[apiFetch] 401 Unauthorized - trying to refresh token for ${endpoint}`);
-        const refreshed = await handleUnauthorized();
-        if (refreshed) {
-          console.log(`[apiFetch] Token refreshed, retrying request to ${endpoint}`);
-          return apiFetch(endpoint, options, false);
-        }
+      // For login endpoints, HTML response usually means server error
+      if (endpoint.includes('/login')) {
+        throw {
+          status: response.status,
+          data: { 
+            message: 'Server error - please try again later',
+            error: 'HTML_RESPONSE'
+          },
+          isHtml: true
+        };
       }
 
       if (response.status === 401) {
         clearAuthToken();
         clearAdminToken();
         window.dispatchEvent(new Event('unauthorized'));
-        console.error(`[apiFetch] Authentication failed for ${endpoint}`);
         throw {
           status: response.status,
           data: { message: 'Authentication required' },
-          html: responseText.substring(0, 200) // Include snippet for debugging
         };
       }
 
-      // Throw a specific error for HTML responses
       throw {
         status: response.status,
         data: { 
-          message: 'Server returned HTML instead of JSON',
-          htmlSnippet: responseText.substring(0, 200)
+          message: 'Server returned unexpected response',
+          error: 'HTML_RESPONSE'
         },
         isHtml: true
       };
     }
 
-    // Handle unauthorized responses (token expired)
-    if (response.status === 401 && retry) {
-      console.warn(`[apiFetch] 401 Unauthorized - trying to refresh token for ${endpoint}`);
-      const refreshed = await handleUnauthorized();
-      if (refreshed) {
-        console.log(`[apiFetch] Token refreshed, retrying request to ${endpoint}`);
-        return apiFetch(endpoint, options, false);
+    // Handle authentication failures for login endpoints
+    if (response.status === 401 && endpoint.includes('/login')) {
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { 
+          message: 'Invalid credentials',
+          error: 'AUTH_FAILED'
+        };
       }
+      throw { status: response.status, data: errorData };
     }
 
-    if (response.status === 401) {
-      clearAuthToken();
-      clearAdminToken();
+    // Handle other unauthorized responses (non-login endpoints)
+    if (response.status === 401 && !endpoint.includes('/login')) {
+      // Clear the appropriate token based on the endpoint
+      if (endpoint.includes('/admin/')) {
+        clearAdminToken();
+      } else {
+        clearAuthToken();
+      }
       window.dispatchEvent(new Event('unauthorized'));
-      console.error(`[apiFetch] Authentication failed for ${endpoint}`);
-      throw {
-        status: response.status,
-        data: { message: 'Authentication required' },
-      };
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { message: 'Authentication required' };
+      }
+      throw { status: response.status, data: errorData };
     }
 
+    // Handle other error status codes
     if (!response.ok) {
-      // Try to parse as JSON, but fallback to text
       let errorData;
       try {
         errorData = JSON.parse(responseText);
       } catch {
         errorData = { 
           message: response.statusText || 'Request failed',
-          rawResponse: responseText.substring(0, 200)
+          error: 'REQUEST_FAILED'
         };
       }
+      
+      // Special handling for login endpoints with non-401 errors
+      if (endpoint.includes('/login')) {
+        errorData.error = errorData.error || 'LOGIN_FAILED';
+      }
+      
       console.error(`[apiFetch] Error response from ${endpoint}:`, errorData);
       throw { status: response.status, data: errorData };
     }
 
+    // Handle no content responses
     if (response.status === 204) {
       console.log(`[apiFetch] No content (204) from ${endpoint}`);
       return null as T;
     }
 
-    // Parse the JSON response
+    // Parse successful JSON response
     try {
       const data = JSON.parse(responseText);
-      console.log(`[apiFetch] Success response from ${endpoint}:`, data);
+      console.log(`[apiFetch] Success response from ${endpoint}:`, 
+        endpoint.includes('/login') ? { ...data, token: data.token ? '[REDACTED]' : undefined } : data
+      );
       return data as T;
     } catch (parseError) {
       console.error(`[apiFetch] JSON parse error for ${endpoint}:`, parseError);
       throw {
         status: response.status,
         data: { 
-          message: 'Invalid JSON response',
-          rawResponse: responseText.substring(0, 200)
+          message: 'Invalid server response',
+          error: 'INVALID_JSON'
         }
       };
     }
 
   } catch (error) {
     console.error(`[apiFetch] API Error on ${endpoint}:`, error);
+    
+    // Re-throw with enhanced error info for login endpoints
+    if (endpoint.includes('/login')) {
+      const enhancedError = error as any;
+      if (!enhancedError.data?.error) {
+        enhancedError.data = {
+          ...enhancedError.data,
+          error: 'NETWORK_ERROR'
+        };
+      }
+      throw enhancedError;
+    }
+    
     throw error;
   }
+};
+
+export const adminLogin = async (username: string, password: string): Promise<AuthResponse> => {
+  try {
+    const response = await apiFetch<AuthResponse>('/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        username: username.trim(), 
+        password: password 
+      }),
+    });
+
+    if (response.success && response.token && response.user) {
+      // Store tokens and user info
+      setAdminToken(response.token);
+      localStorage.setItem('admin_user', JSON.stringify(response.user));
+      localStorage.setItem('admin_role', response.user.role);
+      localStorage.setItem('admin_permissions', JSON.stringify(response.user.permissions));
+      
+      return response;
+    } else {
+      return {
+        success: false,
+        message: response.message || 'Login failed',
+        error: response.error || 'LOGIN_FAILED'
+      };
+    }
+  } catch (error: any) {
+    console.error('Admin login API error:', error);
+    
+    // Handle different error scenarios
+    if (error.status === 401) {
+      return {
+        success: false,
+        message: error.data?.message || 'Invalid username or password',
+        error: 'INVALID_CREDENTIALS'
+      };
+    } else if (error.status === 423) {
+      return {
+        success: false,
+        message: error.data?.message || 'Account locked due to too many failed attempts',
+        error: 'ACCOUNT_LOCKED'
+      };
+    } else if (error.status === 403) {
+      return {
+        success: false,
+        message: error.data?.message || 'Account is not active',
+        error: 'ACCOUNT_INACTIVE'
+      };
+    } else {
+      return {
+        success: false,
+        message: error.data?.message || 'Network error. Please try again.',
+        error: error.data?.error || 'NETWORK_ERROR'
+      };
+    }
+  }
+};
+
+// Token management functions
+export const getAdminToken = (): string | null => {
+  return localStorage.getItem('admin_token');
+};
+
+export const setAdminToken = (token: string): void => {
+  localStorage.setItem('admin_token', token);
+};
+
+export const clearAdminToken = (): void => {
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_user');
+  localStorage.removeItem('admin_role');
+  localStorage.removeItem('admin_permissions');
+};
+
+export const getAuthToken = (): string | null => {
+  return localStorage.getItem('user_token');
+};
+
+export const setAuthToken = (token: string): void => {
+  localStorage.removeItem('admin_token'); // Clear admin token when setting user token
+  localStorage.setItem('user_token', token);
+};
+
+export const clearAuthToken = (): void => {
+  localStorage.removeItem('user_token');
+};
+
+// Handle unauthorized responses (token refresh)
+const handleUnauthorized = async (): Promise<boolean> => {
+  // For simplicity, we don't refresh tokens - just clear and redirect
+  clearAuthToken();
+  clearAdminToken();
+  window.dispatchEvent(new Event('unauthorized'));
+  return false;
 };
 
 
@@ -624,11 +652,11 @@ export const getUserTaskStatus = async (
 // === SETTINGS ===
 // In services/api.ts - Update both functions
 export const fetchSettings = async (): Promise<{ autoWithdrawals: boolean }> => {
-  return await apiFetch<{ autoWithdrawals: boolean }>('/api/settings'); // or '/api/admin/settings'
+  return await apiFetch<{ autoWithdrawals: boolean }>('admin/api/settings'); // or '/api/admin/settings'
 };
 
 export const updateSettings = async (settings: { autoWithdrawals: boolean }): Promise<any> => {
-  return await apiFetch('/api/settings', { // Make sure this matches the backend
+  return await apiFetch('/admin/api/settings', { // Make sure this matches the backend
     method: 'POST',
     body: JSON.stringify(settings),
   });
@@ -669,7 +697,7 @@ export const toggleAdNetwork = async (
 
 
 export const createDailyTask = async (task: CreateDailyTaskDTO) => {
-  return apiFetch('/daily-tasks', {
+  return apiFetch('/admin/daily-tasks', {
     method: 'POST',
     body: JSON.stringify(task),
   });
@@ -907,7 +935,7 @@ export const fetchAllUsers = async (page: number = 1, perPage: number = 50, bann
       params.append('banned', banned.toString());
     }
 
-    const response = await apiFetch(`/users?${params.toString()}`, {
+    const response = await apiFetch(`/admin/users?${params.toString()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1714,13 +1742,13 @@ export const fetchPendingWithdrawals = async (): Promise<{success: boolean; tran
 
 
 export const approveWithdrawal = async (transactionId: number): Promise<{success: boolean; message: string; transaction: Transaction}> => {
-  return await apiFetch(`/api/admin/withdrawals/${transactionId}/approve`, { // Add /api prefix
+  return await apiFetch(`/admin/withdrawals/${transactionId}/approve`, { // Add /api prefix
     method: 'POST',
   });
 };
 
 export const rejectWithdrawal = async (transactionId: number): Promise<{success: boolean; message: string; transaction: Transaction}> => {
-  return await apiFetch(`/api/admin/withdrawals/${transactionId}/reject`, { // Add /api prefix
+  return await apiFetch(`/admin/withdrawals/${transactionId}/reject`, { // Add /api prefix
     method: 'POST',
   });
 };
@@ -2008,14 +2036,192 @@ export const redeemPromoCode = async (code: string): Promise<{ success: boolean;
 
 // --- Admin-facing API ---
 
-export const adminLogin = async (username: string, password: string): Promise<{ success: boolean, token?: string }> => {
-    await simulateDelay();
-    const admin = admins.find(a => a.username === username && a.password === password);
-    if (admin) {
-        return { success: true, token: `mock_token_${admin.id}` };
+// export const adminLogin = async (username: string, password: string): Promise<{ success: boolean, token?: string }> => {
+//     await simulateDelay();
+//     const admin = admins.find(a => a.username === username && a.password === password);
+//     if (admin) {
+//         return { success: true, token: `mock_token_${admin.id}` };
+//     }
+//     return { success: false };
+// };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// services/api.ts
+export interface AuthResponse {
+  success: boolean;
+  token?: string;
+  user?: {
+    id: number;
+    username: string;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    role: string;
+    permissions: string[];
+    timezone: string;
+    language: string;
+    must_change_password: boolean;
+  };
+  message?: string;
+  error?: string;
+}
+
+
+
+export const verifyAdminAuth = async (): Promise<AuthResponse> => {
+  const adminToken = getAdminToken();
+  
+  if (!adminToken) {
+    return { 
+      success: false, 
+      message: 'No authentication token found',
+      error: 'NO_TOKEN'
+    };
+  }
+
+  try {
+    const response = await apiFetch<AuthResponse>('/admin/verify', {
+      method: 'GET',
+    });
+
+    if (response.success && response.user) {
+      // Update stored user info
+      localStorage.setItem('admin_user', JSON.stringify(response.user));
+      localStorage.setItem('admin_role', response.user.role);
+      localStorage.setItem('admin_permissions', JSON.stringify(response.user.permissions));
+      
+      return response;
+    } else {
+      // Token is invalid, clear local storage
+      clearAdminAuth();
+      return {
+        success: false,
+        message: response.message || 'Session expired',
+        error: 'SESSION_EXPIRED'
+      };
     }
-    return { success: false };
+  } catch (error: any) {
+    console.error('Token verification failed:', error);
+    
+    // Clear invalid token
+    clearAdminAuth();
+    
+    if (error.status === 401) {
+      return {
+        success: false,
+        message: 'Session expired. Please login again.',
+        error: 'SESSION_EXPIRED'
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Authentication verification failed',
+        error: 'VERIFICATION_FAILED'
+      };
+    }
+  }
 };
+
+export const adminLogout = async (): Promise<{ success: boolean; message?: string }> => {
+  const adminToken = getAdminToken();
+  
+  try {
+    if (adminToken) {
+      await apiFetch('/admin/logout', {
+        method: 'POST',
+      });
+    }
+  } catch (error) {
+    console.error('Logout API call failed:', error);
+    // Continue with client-side logout even if API call fails
+  } finally {
+    // Always clear client-side data
+    clearAdminAuth();
+  }
+  
+  return { success: true, message: 'Logout successful' };
+};
+
+// Helper functions
+
+
+export const getAdminUser = (): any => {
+  const userStr = localStorage.getItem('admin_user');
+  return userStr ? JSON.parse(userStr) : null;
+};
+
+export const getAdminPermissions = (): string[] => {
+  const permissionsStr = localStorage.getItem('admin_permissions');
+  return permissionsStr ? JSON.parse(permissionsStr) : [];
+};
+
+export const getAdminRole = (): string | null => {
+  return localStorage.getItem('admin_role');
+};
+
+export const clearAdminAuth = (): void => {
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_user');
+  localStorage.removeItem('admin_role');
+  localStorage.removeItem('admin_permissions');
+};
+
+export const hasAdminPermission = (requiredPermission: string): boolean => {
+  const permissions = getAdminPermissions();
+  return permissions.includes('all') || permissions.includes(requiredPermission);
+};
+
+export const isAdminUser = (): boolean => {
+  const role = getAdminRole();
+  return role === 'admin' || role === 'super_admin';
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // export const fetchDashboardStats = async () => {
 //     await simulateDelay();

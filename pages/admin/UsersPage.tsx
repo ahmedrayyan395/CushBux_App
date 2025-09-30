@@ -95,37 +95,37 @@ const UsersPage: React.FC = () => {
         }
     };
 
-    const handleQuickAction = async (action: string, user: User, value?: number) => {
-        try {
-            let result: User;
+    // const handleQuickAction = async (action: string, user: User, value?: number) => {
+    //     try {
+    //         let result: User;
             
-            switch (action) {
-                case 'addCoins':
-                    result = await addCoinsToUser(user.id.toString(), value || 1000);
-                    break;
-                case 'addTON':
-                    result = await addTONToUser(user.id.toString(), value || 1);
-                    break;
-                case 'addSpins':
-                    result = await addSpinsToUser(user.id.toString(), value || 5);
-                    break;
-                case 'resetDaily':
-                    result = await resetDailyStats(user.id.toString());
-                    break;
-                case 'resetProgress':
-                    result = await resetUserProgress(user.id.toString(), 'all');
-                    break;
-                default:
-                    return;
-            }
+    //         switch (action) {
+    //             case 'addCoins':
+    //                 result = await addCoinsToUser(user.id.toString(), value || 1000);
+    //                 break;
+    //             case 'addTON':
+    //                 result = await addTONToUser(user.id.toString(), value || 1);
+    //                 break;
+    //             case 'addSpins':
+    //                 result = await addSpinsToUser(user.id.toString(), value || 5);
+    //                 break;
+    //             case 'resetDaily':
+    //                 result = await resetDailyStats(user.id.toString());
+    //                 break;
+    //             case 'resetProgress':
+    //                 result = await resetUserProgress(user.id.toString(), 'all');
+    //                 break;
+    //             default:
+    //                 return;
+    //         }
 
-            setUsers(prevUsers => prevUsers.map(u => u.id === result.id ? result : u));
-            alert('Action completed successfully!');
-        } catch (error) {
-            console.error('Failed to perform action:', error);
-            alert('Failed to perform action');
-        }
-    };
+    //         setUsers(prevUsers => prevUsers.map(u => u.id === result.id ? result : u));
+    //         alert('Action completed successfully!');
+    //     } catch (error) {
+    //         console.error('Failed to perform action:', error);
+    //         alert('Failed to perform action');
+    //     }
+    // };
 
     const filteredUsers = isSearching ? users : users.filter(user =>
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -293,7 +293,7 @@ const UsersPage: React.FC = () => {
                     user={editingUser}
                     onClose={() => setEditingUser(null)}
                     onSave={handleUpdateUser}
-                    onQuickAction={handleQuickAction}
+                    // onQuickAction={handleQuickAction}
                 />
             )}
         </div>
@@ -337,7 +337,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ user, onClose, onSave, on
                 <h2 className="text-2xl font-bold text-white mb-4">Edit User: {user.name}</h2>
                 
                 {/* Quick Actions */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
+                {/* <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
                     <button 
                         onClick={() => onQuickAction('addCoins', user, 1000)}
                         className="px-3 py-2 bg-green-500 text-white rounded text-sm"
@@ -362,7 +362,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ user, onClose, onSave, on
                     >
                         Reset Daily
                     </button>
-                </div>
+                </div> */}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

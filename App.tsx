@@ -5,6 +5,7 @@ import { Buffer } from 'buffer';
 
 import type { User } from './types';
 import { devLogin, loginWithTelegram } from './services/api';
+import { useAuth } from './hooks/useAuth';
 
 import Layout from './components/Layout';
 import EarningsPage from './pages/EarningsPage';
@@ -28,7 +29,7 @@ import PromoCodesPage from './pages/admin/PromoCodesPage';
 import TasksPage from './pages/admin/TasksPage';
 import SettingsPage from './pages/admin/SettingsPage';
 import QuestAdmin from './pages/admin/QuestsPage';
-
+import UserManagementPage from './pages/admin/UserManagementPage';
 
 declare global {
   interface Window {
@@ -45,53 +46,40 @@ declare global {
   }
 }
 
-
-
 // Buffer polyfill for @tonconnect/ui-react
 window.Buffer = Buffer;
 
 const App: React.FC = () => {
-  
+  // User state for Telegram app
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  
+  // Admin authentication using our custom hook
+  const { 
+    isAuthenticated: isAdminAuthenticated, 
+    user: adminUser, 
+    loading: adminLoading, 
+    logout: adminLogout,
+    checkAuth: checkAdminAuth 
+  } = useAuth();
 
- const handleSetUser = (update: React.SetStateAction<User | null>) => {
+  const handleSetUser = (update: React.SetStateAction<User | null>) => {
     setUser(update);
   };
   
   const handleAdminLogin = () => {
-      setIsAdminAuthenticated(true);
+    checkAdminAuth(); // Refresh auth state after login
   };
   
-  const handleAdminLogout = () => {
-      localStorage.removeItem('admin_token');
-      setIsAdminAuthenticated(false);
+  const handleAdminLogout = async () => {
+    await adminLogout();
   };
 
+  const IS_DEV_MODE = true;
+  const DEV_USER_ID = 4; // The ID of the user from your database you want to simulate.
 
-  // useEffect(() => {
-
-  //   fetchUser().then(setUser);
-  //   // Check for existing admin token in localStorage
-  //   if (localStorage.getItem('admin_token')) {
-  //       setIsAdminAuthenticated(true);
-  //   }
-  // }, []);
-
-    const IS_DEV_MODE = true;
-    const DEV_USER_ID =4; // The ID of the user from your database you want to simulate.
-
-
-
-
-   
-
-
-
-    useEffect(() => {
-    // --- START OF EFFECT ---
+  useEffect(() => {
     console.log("1. useEffect has started.");
 
     const authenticateApp = async () => {
@@ -112,23 +100,15 @@ const App: React.FC = () => {
           setUser(devUser);
           console.log("8. setUser has been called successfully.");
 
-        }
-        
-        
-        
-        
-        else {
-
-          
+        } else {
           // --- PRODUCTION MODE ---
           console.log("4. PROD MODE is ON. Checking for Telegram WebApp...");
           
-
           if (!window.Telegram || !window.Telegram.WebApp) {
-          console.warn("Telegram WebApp not found. Running outside Telegram.");
-          setError("Please open this app via Telegram bot.");
-          return;
-         }
+            console.warn("Telegram WebApp not found. Running outside Telegram.");
+            setError("Please open this app via Telegram bot.");
+            return;
+          }
 
           // Inside your PROD MODE section, add this:
           console.log("5. PROD MODE: Waiting for Telegram to be ready...");
@@ -172,27 +152,25 @@ const App: React.FC = () => {
       }
     };
     
-    // --- START OF EXECUTION LOGIC ---
     console.log("2. About to call authenticateApp.");
     authenticateApp();
-
-    // Admin auth check
-    if (localStorage.getItem('admin_token')) {
-        setIsAdminAuthenticated(true);
-    }
     
-  }, []); // Empty dependency array ensures this runs only once.
-  
-  
+  }, []);
 
-
-
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white">Authenticating...</div>;
+  // Show loading state for both user and admin auth
+  if (loading || adminLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-900 text-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
   }
 
-  if (error) {
-    // This component will now display a detailed error message instead of crashing.
+  if (error && !isAdminAuthenticated) {
+    // Only show error if we're not in admin mode
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-red-500 p-4 text-center">
         <h2 className="text-2xl font-bold mb-4">Authentication Error</h2>
@@ -200,58 +178,113 @@ const App: React.FC = () => {
         <pre className="mt-4 p-4 bg-slate-800 rounded-md text-left text-sm text-red-400 w-full max-w-lg">
           {error}
         </pre>
+        <div className="mt-6">
+          <p className="text-slate-300 mb-2">Or access the admin panel:</p>
+          <a 
+            href="/admin/login" 
+            className="inline-block px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Go to Admin Login
+          </a>
+        </div>
       </div>
     );
   }
 
-
-  if (!user) {
-    // This will be shown briefly if auth finishes but something went wrong with setUser.
-    // Or if an unauthenticated user tries to access the app.
-    return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-900 text-yellow-500">
-            Authentication successful, but user data is not available. Please reload.
-        </div>
-    );
-  }
-
- 
+  // For regular user routes, we need a user
+  // For admin routes, we don't need a Telegram user
+  const shouldShowUserRoutes = user && !isAdminAuthenticated;
+  const shouldShowAdminRoutes = isAdminAuthenticated;
 
   return (
     <TonConnectUIProvider manifestUrl="https://ton-connect.github.io/demo-dapp-with-react-ui/tonconnect-manifest.json">
         <div className="min-h-screen bg-slate-900 text-white font-sans">
             <Routes>
-                {/* Admin Routes */}
-                <Route path="/admin/login" element={<LoginPage onLogin={handleAdminLogin} />} />
-                <Route path="/admin" element={<ProtectedRoute isAuthenticated={isAdminAuthenticated} />}>
-                    <Route element={<AdminLayout onLogout={handleAdminLogout} />}>
-                        <Route path="dashboard" element={<DashboardPage />} />
-                        <Route path="users" element={<UsersPage />} />
-                        <Route path="promocodes" element={<PromoCodesPage />} />
-                        <Route path="tasks" element={<TasksPage />} />
-                        <Route path="settings" element={<SettingsPage />} />
-                        <Route path="questadmin" element={<QuestAdmin />} />
-                        <Route index element={<Navigate to="dashboard" />} />
-                    </Route>
-                </Route>
-
-                User Routes
-                <Route path="/new-task" element={<NewTaskPage user={user} setUser={handleSetUser} />} />
-                <Route path="/new-partner-task" element={<NewPartnerTaskPage user={user} setUser={handleSetUser} />} />
-                <Route path="/spin-wheel" element={<SpinWheelPage user={user} setUser={handleSetUser} />} />
-                <Route path="/game/space-defender" element={<SpaceDefenderPage user={user} setUser={setUser} />} />
-                <Route path="/game/street-racing" element={<StreetRacingPage user={user} setUser={setUser} />} />
-
-                <Route element={<Layout user={user} />}>
-                    <Route path="/" element={<EarningsPage setUser={handleSetUser} user={user} />} />
-                    <Route path="/quests" element={<QuestsPage user={user} setUser={handleSetUser} />} />
-                    <Route path="/game" element={<GamePage />} />
-                    <Route path="/friends" element={<FriendsPage user={user} setUser={handleSetUser} />} />
-                    <Route path="/withdraw" element={<WithdrawPage user={user} setUser={handleSetUser} />} />
-                </Route>
-
-
+                {/* Admin Routes - Accessible via web browser */}
+                <Route 
+                  path="/admin/login" 
+                  element={
+                    isAdminAuthenticated ? 
+                      <Navigate to="/admin/dashboard" replace /> : 
+                      <LoginPage onLogin={handleAdminLogin} />
+                  } 
+                />
                 
+                <Route 
+                  path="/admin/*" 
+                  element={
+                    <ProtectedRoute 
+                      isAuthenticated={isAdminAuthenticated}
+                      loading={adminLoading}
+                    >
+                      <AdminLayout onLogout={handleAdminLogout} user={adminUser} />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="dashboard" element={<DashboardPage />} />
+                  <Route path="system-users" element={<UserManagementPage />} />
+                  <Route path="users" element={<UsersPage />} />
+                  <Route path="promocodes" element={<PromoCodesPage />} />
+                  <Route path="tasks" element={<TasksPage />} />
+                  <Route path="settings" element={<SettingsPage />} />
+                  <Route path="questadmin" element={<QuestAdmin />} />
+                  <Route index element={<Navigate to="dashboard" />} />
+                </Route>
+
+                {/* User Routes - Only show if we have a Telegram user AND not in admin mode */}
+                {shouldShowUserRoutes && (
+                  <>
+                    <Route path="/new-task" element={<NewTaskPage user={user} setUser={handleSetUser} />} />
+                    <Route path="/new-partner-task" element={<NewPartnerTaskPage user={user} setUser={handleSetUser} />} />
+                    <Route path="/spin-wheel" element={<SpinWheelPage user={user} setUser={handleSetUser} />} />
+                    <Route path="/game/space-defender" element={<SpaceDefenderPage user={user} setUser={setUser} />} />
+                    <Route path="/game/street-racing" element={<StreetRacingPage user={user} setUser={setUser} />} />
+
+                    <Route element={<Layout user={user} />}>
+                      <Route path="/" element={<EarningsPage setUser={handleSetUser} user={user} />} />
+                      <Route path="/quests" element={<QuestsPage user={user} setUser={handleSetUser} />} />
+                      <Route path="/game" element={<GamePage />} />
+                      <Route path="/friends" element={<FriendsPage user={user} setUser={handleSetUser} />} />
+                      <Route path="/withdraw" element={<WithdrawPage user={user} setUser={handleSetUser} />} />
+                    </Route>
+                  </>
+                )}
+
+                {/* Catch-all route - redirect based on authentication state */}
+                <Route 
+                  path="*" 
+                  element={
+                    isAdminAuthenticated ? 
+                      <Navigate to="/admin/dashboard" replace /> : 
+                      (user ? <Navigate to="/" replace /> : <Navigate to="/admin/login" replace />)
+                  } 
+                />
+
+                {/* Fallback for when no routes match and no user/admin */}
+                {!shouldShowUserRoutes && !shouldShowAdminRoutes && (
+                  <Route 
+                    path="*" 
+                    element={
+                      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900">
+                        <div className="text-center p-8">
+                          <h1 className="text-2xl font-bold text-red-500 mb-4">Access Denied</h1>
+                          <p className="text-slate-300 mb-6">Please authenticate to continue.</p>
+                          <div className="space-y-4">
+                            <a 
+                              href="/admin/login" 
+                              className="block px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                            >
+                              Admin Login
+                            </a>
+                            <p className="text-slate-400 text-sm">
+                              For regular users: please access this app through Telegram
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    } 
+                  />
+                )}
             </Routes>
         </div>
     </TonConnectUIProvider>

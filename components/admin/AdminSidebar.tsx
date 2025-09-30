@@ -1,20 +1,24 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { ICONS } from '../../constants';
 
 const navItems = [
-    { path: 'dashboard', label: 'Dashboard', icon: ICONS.dashboard },
-    { path: 'users', label: 'Users', icon: ICONS.users },
-    { path: 'tasks', label: 'Add Task', icon: ICONS.tasks },
-    { path: 'questadmin', label: 'Quests Management', icon: '⚡' }, // Added Quests Management
-    { path: 'promocodes', label: 'Promo Codes', icon: ICONS.promoCode },
-    { path: 'settings', label: 'Settings', icon: ICONS.settings },
+    { path: '/admin/dashboard', label: 'Dashboard', icon: ICONS.dashboard },
+    { path: '/admin/system-users', label: 'System Users', icon: ICONS.dashboard },
+    { path: '/admin/users', label: 'Users', icon: ICONS.users },
+    { path: '/admin/tasks', label: 'Add Task', icon: ICONS.tasks },
+    { path: '/admin/questadmin', label: 'Quests Management', icon: '⚡' },
+    { path: '/admin/promocodes', label: 'Promo Codes', icon: ICONS.promoCode },
+    { path: '/admin/settings', label: 'Settings', icon: ICONS.settings },
 ];
+
 interface AdminSidebarProps {
     onLogout: () => void;
 }
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ onLogout }) => {
+    const location = useLocation();
+
     return (
         <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col p-4 fixed h-full">
             <div className="text-center py-4 mb-4">
@@ -26,6 +30,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ onLogout }) => {
                         <li key={item.path}>
                             <NavLink
                                 to={item.path}
+                                end={item.path === '/admin/dashboard'} // Use 'end' for exact match on dashboard
                                 className={({ isActive }) =>
                                     `flex items-center space-x-3 p-3 my-1 rounded-lg text-lg font-semibold transition-colors ${
                                         isActive

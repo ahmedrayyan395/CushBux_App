@@ -163,7 +163,7 @@ const BuySpinsModal: React.FC<BuySpinsModalProps> = ({ isOpen, onClose, user, se
             const canAfford = (user?.coins ?? 0) >= costInCoins;
             return { canAfford, costDisplay: formatCoinCost(costInCoins) };
         } else {
-            const userTonBalance = user?.ad_balance ? Number(user.ad_balance) : 0;
+            const userTonBalance = user?.ad_credit ? Number(user.ad_credit) : 0;
             const canAffordWithInAppTon = userTonBalance >= pkg.costTon;
             return { 
                 canAfford: canAffordWithInAppTon, 

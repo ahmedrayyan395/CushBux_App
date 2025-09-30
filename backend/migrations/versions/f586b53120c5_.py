@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: f54d3a90b0ba
+Revision ID: f586b53120c5
 Revises: 
-Create Date: 2025-09-27 22:25:08.434053
+Create Date: 2025-09-30 13:51:31.520873
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f54d3a90b0ba'
+revision = 'f586b53120c5'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -60,6 +60,32 @@ def upgrade():
     sa.Column('auto_withdrawals', sa.Boolean(), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('system_users',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('username', sa.String(length=50), nullable=False),
+    sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=False),
+    sa.Column('first_name', sa.String(length=50), nullable=True),
+    sa.Column('last_name', sa.String(length=50), nullable=True),
+    sa.Column('role', sa.Enum('SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'SUPPORT', 'VIEWER', name='userrole'), nullable=False),
+    sa.Column('status', sa.Enum('ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING', name='userstatus'), nullable=False),
+    sa.Column('permissions', sa.JSON(), nullable=False),
+    sa.Column('last_login', sa.DateTime(), nullable=True),
+    sa.Column('login_attempts', sa.Integer(), nullable=True),
+    sa.Column('must_change_password', sa.Boolean(), nullable=True),
+    sa.Column('timezone', sa.String(length=50), nullable=True),
+    sa.Column('language', sa.String(length=10), nullable=True),
+    sa.Column('created_by', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.Column('last_password_change', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['created_by'], ['system_users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('system_users', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_system_users_email'), ['email'], unique=True)
+        batch_op.create_index(batch_op.f('ix_system_users_username'), ['username'], unique=True)
+
     op.create_table('users',
     sa.Column('wallet_address', sa.String(length=255), nullable=True),
     sa.Column('id', sa.BigInteger(), autoincrement=False, nullable=False, comment='Corresponds to Telegram ID'),
@@ -146,7 +172,7 @@ def upgrade():
     sa.Column('amount', sa.Numeric(precision=20, scale=9), nullable=False),
     sa.Column('transaction_type', sa.Enum('WITHDRAWAL', 'DEPOSIT', name='transactiontype'), nullable=False),
     sa.Column('currency', sa.Enum('TON', 'COINS', 'SPINS', name='transactioncurrency'), nullable=False),
-    sa.Column('status', sa.Enum('COMPLETED', 'PENDING', 'FAILED', name='transactionstatus'), nullable=False),
+    sa.Column('status', sa.Enum('COMPLETED', 'PENDING', 'FAILED', 'PROCESSING', name='transactionstatus'), nullable=False),
     sa.Column('description', sa.String(length=255), nullable=True),
     sa.Column('transaction_id_on_blockchain', sa.String(length=255), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
@@ -251,6 +277,11 @@ def downgrade():
     op.drop_table('daily_tasks')
     op.drop_table('claimed_quests')
     op.drop_table('users')
+    with op.batch_alter_table('system_users', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_system_users_username'))
+        batch_op.drop_index(batch_op.f('ix_system_users_email'))
+
+    op.drop_table('system_users')
     op.drop_table('settings')
     op.drop_table('quests')
     op.drop_table('promo_codes')

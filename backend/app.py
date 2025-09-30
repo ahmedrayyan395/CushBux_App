@@ -7,13 +7,22 @@ from io import StringIO
 import os
 import random
 import re
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import (
+    JWTManager, create_access_token, create_refresh_token, jwt_required, 
+    get_jwt_identity, get_jwt
+)
+from sqlalchemy import or_
+
+
 
 import secrets
 from sqlite3 import IntegrityError
 import string
 # models.py
 import aiohttp
-import jwt
+import bcrypt
+import jwt as pyjwt  # Rename PyJWT to avoid conflict
 import requests
 from sqlalchemy.dialects.postgresql import JSONB # Use JSONB for PostgreSQL for better performance
 # from flask_jwt_extended import JWTManager
@@ -58,10 +67,9 @@ CORS(
 )
 app.secret_key = 'replace-this-with-your-own-very-secret-key'
 # Add JWT secret to your config
-JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'cashubux-admin-secret-key-2025')
 JWT_ALGORITHM = 'HS256'
-# app.config["JWT_SECRET_KEY"] = "your-super-secret-key-for-jwt"
-# jwt = JWTManager(app)
+jwt = JWTManager(app)
 
 # app.register_blueprint(admin_management, url_prefix='/admin')
 
@@ -73,12 +81,16 @@ app.config['SESSION_COOKIE_SECURE'] = True
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///mini_telegram_app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = 'cashubux-admin-secret-key-2025'
 
+
+from flask_bcrypt import Bcrypt
 
 
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-
+bcrypt = Bcrypt()
+jwt = JWTManager()
 
 
 # from datetime import datetime
@@ -144,6 +156,104 @@ def seed_users():
     db.session.add_all(users)
     db.session.commit()
     click.echo("✅ Users seeded successfully")
+
+
+
+
+
+@app.cli.command("seed-system-users")
+@with_appcontext
+def seed_system_users():
+    """Seed demo system users into the database."""
+    
+    # Check if users already exist to avoid duplicates
+    existing_users = SystemUser.query.all()
+    if existing_users:
+        click.echo("⚠️  System users already exist. Skipping seeding.")
+        return
+
+    system_users = [
+        SystemUser(
+            username="superadmin",
+            email="superadmin@cashubux.com",
+            password="SuperAdmin123!",
+            first_name="System",
+            last_name="Administrator",
+            role=UserRole.SUPER_ADMIN,
+            created_by=None  # This is the first user
+        ),
+        SystemUser(
+            username="admin",
+            email="admin@cashubux.com",
+            password="Admin123!",
+            first_name="John",
+            last_name="Admin",
+            role=UserRole.ADMIN,
+            created_by=1  # Created by superadmin
+        ),
+        SystemUser(
+            username="moderator1",
+            email="moderator1@cashubux.com",
+            password="Moderator123!",
+            first_name="Sarah",
+            last_name="Moderator",
+            role=UserRole.MODERATOR,
+            created_by=1
+        ),
+        SystemUser(
+            username="moderator2",
+            email="moderator2@cashubux.com",
+            password="Moderator123!",
+            first_name="Mike",
+            last_name="Coordinator",
+            role=UserRole.MODERATOR,
+            created_by=2
+        ),
+        SystemUser(
+            username="support1",
+            email="support1@cashubux.com",
+            password="Support123!",
+            first_name="Emily",
+            last_name="Support",
+            role=UserRole.SUPPORT,
+            created_by=1
+        ),
+        SystemUser(
+            username="viewer1",
+            email="viewer1@cashubux.com",
+            password="Viewer123!",
+            first_name="David",
+            last_name="Viewer",
+            role=UserRole.VIEWER,
+            created_by=2
+        ),
+        SystemUser(
+            username="auditor",
+            email="auditor@cashubux.com",
+            password="Auditor123!",
+            first_name="Lisa",
+            last_name="Auditor",
+            role=UserRole.VIEWER,
+            created_by=1
+        )
+    ]
+
+    try:
+        db.session.add_all(system_users)
+        db.session.commit()
+        click.echo("✅ System users seeded successfully!")
+        click.echo("📋 Demo credentials:")
+        click.echo("   Super Admin: superadmin / SuperAdmin123!")
+        click.echo("   Admin: admin / Admin123!")
+        click.echo("   Moderator: moderator1 / Moderator123!")
+        click.echo("   Support: support1 / Support123!")
+        click.echo("   Viewer: viewer1 / Viewer123!")
+        
+    except Exception as e:
+        db.session.rollback()
+        click.echo(f"❌ Error seeding system users: {str(e)}")
+
+
 
 
 @app.cli.command("seed-quests")
@@ -712,6 +822,559 @@ class SpinHistory(db.Model):
 
 
 
+
+
+#Admin models
+class UserRole(enum.Enum):
+    SUPER_ADMIN = "super_admin"
+    ADMIN = "admin"
+    MODERATOR = "moderator"
+    SUPPORT = "support"
+    VIEWER = "viewer"
+
+class UserStatus(enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SUSPENDED = "suspended"
+    PENDING = "pending"
+
+class SystemUser(db.Model):
+    __tablename__ = 'system_users'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    first_name = db.Column(db.String(50), nullable=True)
+    last_name = db.Column(db.String(50), nullable=True)
+    role = db.Column(db.Enum(UserRole), nullable=False, default=UserRole.VIEWER)
+    status = db.Column(db.Enum(UserStatus), nullable=False, default=UserStatus.ACTIVE)
+    permissions = db.Column(db.JSON, nullable=False, default=list)  # Store as JSON array
+    last_login = db.Column(db.DateTime, nullable=True)
+    login_attempts = db.Column(db.Integer, default=0)
+    must_change_password = db.Column(db.Boolean, default=False)
+    timezone = db.Column(db.String(50), default='UTC')
+    language = db.Column(db.String(10), default='en')
+    
+    # Audit fields
+    created_by = db.Column(db.Integer, db.ForeignKey('system_users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_password_change = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    creator = db.relationship('SystemUser', remote_side=[id], backref='created_users')
+    
+    def __init__(self, username, email, password, first_name=None, last_name=None, 
+                 role=UserRole.VIEWER, permissions=None, created_by=None):
+        self.username = username
+        self.email = email
+        self.set_password(password)
+        self.first_name = first_name
+        self.last_name = last_name
+        self.role = role
+        self.permissions = permissions or self.get_default_permissions(role)
+        self.created_by = created_by
+        self.last_password_change = datetime.utcnow()
+
+    def set_password(self, password):
+        """Hash and set password"""
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+        self.last_password_change = datetime.utcnow()
+
+    def check_password(self, password):
+        """Verify password"""
+        return bcrypt.check_password_hash(self.password_hash, password)
+
+    def get_default_permissions(self, role):
+        """Get default permissions based on role"""
+        role_permissions = {
+            UserRole.SUPER_ADMIN: ['all'],
+            UserRole.ADMIN: ['dashboard', 'users', 'tasks', 'promocodes', 'settings', 'questadmin'],
+            UserRole.MODERATOR: ['dashboard', 'users', 'tasks'],
+            UserRole.SUPPORT: ['dashboard', 'users'],
+            UserRole.VIEWER: ['dashboard']
+        }
+        return role_permissions.get(role, ['dashboard'])
+
+    def has_permission(self, permission):
+        """Check if user has specific permission"""
+        return 'all' in self.permissions or permission in self.permissions
+
+    def can_access_route(self, route_permissions):
+        """Check if user can access routes with required permissions"""
+        if not route_permissions:
+            return True
+        return any(self.has_permission(perm) for perm in route_permissions)
+
+    def to_dict(self):
+        """Convert to dictionary for JSON response"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'role': self.role.value,
+            'status': self.status.value,
+            'permissions': self.permissions,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'timezone': self.timezone,
+            'language': self.language,
+            'must_change_password': self.must_change_password,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat()
+        }
+
+    def to_auth_dict(self):
+        """Convert to dictionary for authentication response (excludes sensitive info)"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
+            'role': self.role.value,
+            'permissions': self.permissions,
+            'timezone': self.timezone,
+            'language': self.language,
+            'must_change_password': self.must_change_password
+        }
+
+    def record_login(self):
+        """Record successful login"""
+        self.last_login = datetime.utcnow()
+        self.login_attempts = 0
+
+    def record_login_failure(self):
+        """Record failed login attempt"""
+        self.login_attempts += 1
+
+    def is_locked(self):
+        """Check if account is locked due to too many failed attempts"""
+        return self.login_attempts >= 5  # Lock after 5 failed attempts
+
+    def reset_login_attempts(self):
+        """Reset failed login attempts"""
+        self.login_attempts = 0
+
+    @classmethod
+    def get_by_username(cls, username):
+        """Get user by username"""
+        return cls.query.filter_by(username=username).first()
+
+    @classmethod
+    def get_by_email(cls, email):
+        """Get user by email"""
+        return cls.query.filter_by(email=email).first()
+
+    @classmethod
+    def create_initial_admin(cls):
+        """Create initial admin user if none exists"""
+        if cls.query.filter_by(role=UserRole.SUPER_ADMIN).first() is None:
+            admin = cls(
+                username='admin',
+                email='admin@cashubux.com',
+                password='CashUBux2025!',
+                first_name='System',
+                last_name='Administrator',
+                role=UserRole.SUPER_ADMIN
+
+
+            )
+            db.session.add(admin)
+            db.session.commit()
+            print("Initial super admin user created")
+
+
+
+
+
+
+
+
+
+
+
+def admin_required(f):
+    """Decorator to require admin role"""
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        current_user_id = get_jwt_identity()
+        user = SystemUser.query.get(current_user_id)
+        
+        if not user or user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN]:
+            return jsonify({
+                'success': False,
+                'message': 'Admin access required'
+            }), 403
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+
+
+def moderator_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            current_user_id = get_jwt_identity()
+            user = SystemUser.query.get(current_user_id)
+            
+            # Allow admin, super_admin, and moderator roles
+            allowed_roles = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MODERATOR]
+            if not user or user.role not in allowed_roles:
+                return jsonify({
+                    'success': False,
+                    'message': 'Moderator access required'
+                }), 403
+                
+        except Exception as e:
+            return jsonify({"error": "Invalid token"}), 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+
+# def can_manage_quests(f):
+#     @wraps(f)
+#     def decorated_function(*args, **kwargs):
+#         try:
+#             current_user_id = get_jwt_identity()
+#             user = SystemUser.query.get(current_user_id)
+            
+#             # Allow admin, super_admin, and moderator to manage quests
+#             allowed_roles = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MODERATOR]
+#             if not user or user.role not in allowed_roles:
+#                 return jsonify({
+#                     'success': False,
+#                     'message': 'Insufficient permissions to manage quests'
+#                 }), 403
+                
+#         except Exception as e:
+#             return jsonify({"error": "Invalid token"}), 401
+            
+#         return f(*args, **kwargs)
+#     return decorated_function
+
+# def can_manage_users(f):
+#     @wraps(f)
+#     def decorated_function(*args, **kwargs):
+#         try:
+#             current_user_id = get_jwt_identity()
+#             user = SystemUser.query.get(current_user_id)
+            
+#             # Allow admin, super_admin, and moderator to manage users
+#             allowed_roles = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MODERATOR]
+#             if not user or user.role not in allowed_roles:
+#                 return jsonify({
+#                     'success': False,
+#                     'message': 'Insufficient permissions to manage users'
+#                 }), 403
+                
+#         except Exception as e:
+#             return jsonify({"error": "Invalid token"}), 401
+            
+#         return f(*args, **kwargs)
+#     return decorated_function
+
+
+# routes/auth.py
+
+
+
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    """Admin user login"""
+    data = request.get_json()
+    
+    if not data or 'username' not in data or 'password' not in data:
+        return jsonify({
+            'success': False,
+            'message': 'Username and password are required'
+        }), 400
+
+    username = data['username'].strip()
+    password = data['password']
+
+    # Find user
+    user = SystemUser.get_by_username(username)
+    if not user:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid username or password'
+        }), 401
+
+    # Check if user is active
+    if user.status != UserStatus.ACTIVE:
+        return jsonify({
+            'success': False,
+            'message': 'Account is not active'
+        }), 401
+
+    # Check if account is locked
+    if user.is_locked():
+        return jsonify({
+            'success': False,
+            'message': 'Account temporarily locked due to too many failed attempts'
+        }), 401
+
+    # Verify password
+    if not user.check_password(password):
+        user.record_login_failure()
+        db.session.commit()
+        
+        remaining_attempts = 5 - user.login_attempts
+        return jsonify({
+            'success': False,
+            'message': f'Invalid username or password. {remaining_attempts} attempts remaining.'
+        }), 401
+
+    # Successful login
+    user.record_login()
+    db.session.commit()
+
+    # Create access token
+    access_token = create_access_token(
+        identity=str(user.id),
+        additional_claims={
+            'username': user.username,
+            'role': user.role.value,
+            'permissions': user.permissions
+        },
+        expires_delta=timedelta(hours=24)
+    )
+
+    return jsonify({
+        'success': True,
+        'token': access_token,
+        'user': user.to_auth_dict(),
+        'message': 'Login successful'
+    })
+
+
+
+@app.route('/admin/verify', methods=['GET'])
+@jwt_required()
+def verify_admin_token():
+    """Verify admin token and return user info"""
+    current_user_id = get_jwt_identity()
+    user = SystemUser.query.get(current_user_id)
+    
+    if not user or user.status != UserStatus.ACTIVE:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid or expired token'
+        }), 401
+
+    return jsonify({
+        'success': True,
+        'user': user.to_auth_dict()
+    })
+
+@app.route('/admin/logout', methods=['POST'])
+@jwt_required()
+def admin_logout():
+    """Admin logout"""
+    # In a real implementation, you might want to blacklist the token
+    # or remove it from the user_sessions table
+    
+    return jsonify({
+        'success': True,
+        'message': 'Logout successful'
+    })
+
+# @app.route('/admin/users/me', methods=['GET'])
+# 
+# def get_current_user():
+#     """Get current user profile"""
+#     current_user_id = get_jwt_identity()
+#     user = SystemUser.query.get(current_user_id)
+    
+#     if not user:
+#         return jsonify({
+#             'success': False,
+#             'message': 'User not found'
+#         }), 404
+
+#     return jsonify({
+#         'success': True,
+#         'user': user.to_dict()
+#     })
+
+@app.route('/admin/users/me/password', methods=['PUT'])
+@jwt_required()
+def change_password():
+    """Change current user password"""
+    current_user_id = get_jwt_identity()
+    user = SystemUser.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({
+            'success': False,
+            'message': 'User not found'
+        }), 404
+
+    data = request.get_json()
+    if not data or 'current_password' not in data or 'new_password' not in data:
+        return jsonify({
+            'success': False,
+            'message': 'Current password and new password are required'
+        }), 400
+
+    # Verify current password
+    if not user.check_password(data['current_password']):
+        return jsonify({
+            'success': False,
+            'message': 'Current password is incorrect'
+        }), 400
+
+    # Set new password
+    user.set_password(data['new_password'])
+    user.must_change_password = False
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Password updated successfully'
+    })
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # IMPORTANT: This function needs to be updated to use sessions
 def current_user():
     if  'user_id' in session:
@@ -764,7 +1427,7 @@ def refresh_token():
         
         # Now verify the token properly
         try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         except jwt.ExpiredSignatureError:
             # Token is expired but we'll still allow refresh if user is valid
             pass
@@ -790,7 +1453,7 @@ def refresh_token():
 
 
 # Create a JWT required decorator
-def jwt_required(f):
+def jwt_required_in_app(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         token = request.headers.get('Authorization')
@@ -799,8 +1462,9 @@ def jwt_required(f):
         
         try:
             token = token.replace('Bearer ', '')
-            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            request.user_id = payload['user_id']
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            # FIX: Use 'sub' claim instead of 'user_id'
+            request.user_id = payload['sub']  # Flask-JWT-Extended puts identity in 'sub'
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token expired"}), 401
         except jwt.InvalidTokenError:
@@ -808,8 +1472,8 @@ def jwt_required(f):
             
         return f(*args, **kwargs)
     return decorated_function
-
 # Add this function to validate Telegram authentication
+
 def validate_telegram_init_data_simple(init_data: str, bot_token: str) -> bool:
     """
     Simplified validation that handles common parsing issues
@@ -872,13 +1536,13 @@ def dev_login(user_id):
         'user_id': user.id,
         'exp': datetime.now() + timedelta(days=7)  # UTC is safer for JWT
     }
-    jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    # jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     app.logger.info(f"DEV LOGIN SUCCESS: Session created for User ID {user.id} ({user.name})")
 
     # Return user data with token
     user_data = user.to_dict()
-    user_data['token'] = jwt_token
+    # user_data['token'] = jwt_token
 
     return jsonify(user_data)
 
@@ -1145,7 +1809,7 @@ def auth_with_telegram():
 
 
 @app.route('/my-campaigns', methods=['GET'])
-@jwt_required  # Use this or  depending on your needs
+@jwt_required_in_app  # Use this or  depending on your needs
 def get_my_created_campaigns():
 
     user_id = request.args.get('user_id', type=int)
@@ -1190,45 +1854,10 @@ def get_my_partner_campaigns():
     
     return jsonify(campaigns_list), 200
 
-# @app.route('/usercampaigns/unclaimed', methods=['GET'])
-# @jwt_required
-# def get_my_unclaimed_created_campaigns():
-#     """Return campaigns created by the current user that they haven't yet claimed."""
-#     try:
-#         current_user_id = current_user().id
-
-#         # Get IDs of campaigns this user has already completed
-#         completed_records = db.session.execute(
-#             user_task_completion.select().where(
-#                 (user_task_completion.c.user_id == current_user_id) &
-#                 (user_task_completion.c.completed_at.isnot(None))
-#             )
-#         ).all()
-#         completed_campaign_ids = [record.campaign_id for record in completed_records]
-
-#         # Query campaigns created by this user that are NOT completed by them
-#         user_campaigns = UserCampaign.query.filter(
-#             (UserCampaign.creator_id == current_user_id) &
-#             (~UserCampaign.id.in_(completed_campaign_ids))
-#         ).order_by(UserCampaign.id).all()
-
-#         return jsonify([c.to_dict() for c in user_campaigns]), 200
-
-#     except Exception as e:
-#         print(f"Error fetching my unclaimed campaigns: {e}")
-#         # fallback
-#         user_campaigns = UserCampaign.query.filter_by(
-#             creator_id=current_user().id
-#         ).order_by(UserCampaign.id).all()
-#         return jsonify([c.to_dict() for c in user_campaigns]), 200
-
-
-
-
 
 
 @app.route('/campaigns', methods=['GET'])
-@jwt_required
+@jwt_required_in_app
 def get_all_uncompleted_campaigns():
     """Return all campaigns except the ones the current user has already completed."""
     try:
@@ -1268,7 +1897,7 @@ def get_all_uncompleted_campaigns():
 
 
 @app.route("/addusercampaigns", methods=["POST"])
-@jwt_required
+@jwt_required_in_app
 def create_campaign():
     data = request.get_json()
     user_id = data.get('user_id')
@@ -1420,7 +2049,7 @@ def validate_bot_access(link):
 
 
 @app.route("/tasks/start", methods=["POST"])
-@jwt_required
+@jwt_required_in_app
 def start_task():
     data = request.get_json()
     user_id = data.get("userId")
@@ -1486,7 +2115,7 @@ def start_task():
 
 
 @app.route("/tasks/claim", methods=["POST"])
-@jwt_required
+@jwt_required_in_app
 def claim_task():
     data = request.get_json()
     user_id = data.get("userId")
@@ -1832,7 +2461,7 @@ def check_level_completion(user_id: int, campaign_id: int, current_level: int, r
 
 
 @app.route("/api/webhook-docs/<campaign_id>")
-# @jwt_required
+# @jwt_required_in_app
 def webhook_docs(campaign_id):
     """Provide documentation for specific partner campaign"""
     campaign = PartnerCampaign.query.get(campaign_id)
@@ -1870,7 +2499,7 @@ def webhook_docs(campaign_id):
 
 
 @app.route("/api/campaign/<campaign_id>/token")
-@jwt_required
+@jwt_required_in_app
 def get_campaign_token(campaign_id):
     """Get the webhook token for a specific campaign"""
     campaign = PartnerCampaign.query.get(campaign_id)
@@ -1895,7 +2524,7 @@ def check_user_started_bot(bot_username: str, user_id: int) -> bool:
 
 
 @app.route("/user/tasks/status")
-@jwt_required
+@jwt_required_in_app
 def get_user_task_status():
     user_id = request.args.get("userId")
     
@@ -1930,63 +2559,63 @@ def get_user_task_status():
 
 # ---------------- AdNetwork Endpoints ---------------- #
 
-@app.route("/ad-networks", methods=["GET"])
-def list_ad_networks():
-    networks = AdNetwork.query.all()
-    return jsonify([{
-        "id": n.id,
-        "name": n.name,
-        "code": n.code,
-        "enabled": n.enabled
-    } for n in networks])
+# @app.route("/ad-networks", methods=["GET"])
+# def list_ad_networks():
+#     networks = AdNetwork.query.all()
+#     return jsonify([{
+#         "id": n.id,
+#         "name": n.name,
+#         "code": n.code,
+#         "enabled": n.enabled
+#     } for n in networks])
 
 
-@app.route("/ad-networks", methods=["POST"])
-def create_ad_network():
-    data = request.get_json()
-    new_network = AdNetwork(
-        name=data["name"],
-        code=data["code"],
-        enabled=data.get("enabled", True)
-    )
-    db.session.add(new_network)
-    db.session.commit()
-    return jsonify({
-        "id": new_network.id,
-        "name": new_network.name,
-        "code": new_network.code,
-        "enabled": new_network.enabled
-    }), 201
+# @app.route("/ad-networks", methods=["POST"])
+# def create_ad_network():
+#     data = request.get_json()
+#     new_network = AdNetwork(
+#         name=data["name"],
+#         code=data["code"],
+#         enabled=data.get("enabled", True)
+#     )
+#     db.session.add(new_network)
+#     db.session.commit()
+#     return jsonify({
+#         "id": new_network.id,
+#         "name": new_network.name,
+#         "code": new_network.code,
+#         "enabled": new_network.enabled
+#     }), 201
 
 
 
 
-@app.route("/ad-networks/<string:network_id>", methods=["PUT"])
-def update_ad_network(network_id):
-    data = request.get_json()
-    network = AdNetwork.query.get_or_404(network_id)
+# @app.route("/ad-networks/<string:network_id>", methods=["PUT"])
+# def update_ad_network(network_id):
+#     data = request.get_json()
+#     network = AdNetwork.query.get_or_404(network_id)
 
-    if "name" in data:
-        network.name = data["name"]
-    if "code" in data:
-        network.code = data["code"]
-    if "enabled" in data:
-        network.enabled = data["enabled"]
+#     if "name" in data:
+#         network.name = data["name"]
+#     if "code" in data:
+#         network.code = data["code"]
+#     if "enabled" in data:
+#         network.enabled = data["enabled"]
 
-    db.session.commit()
-    return jsonify({
-        "id": network.id,
-        "name": network.name,
-        "code": network.code,
-        "enabled": network.enabled
-    })
+#     db.session.commit()
+#     return jsonify({
+#         "id": network.id,
+#         "name": network.name,
+#         "code": network.code,
+#         "enabled": network.enabled
+#     })
 
-@app.route("/ad-networks/<string:network_id>", methods=["DELETE"])
-def delete_ad_network(network_id):
-    network = AdNetwork.query.get_or_404(network_id)
-    db.session.delete(network)
-    db.session.commit()
-    return jsonify({"message": f"Ad network {network_id} deleted"}), 200
+# @app.route("/ad-networks/<string:network_id>", methods=["DELETE"])
+# def delete_ad_network(network_id):
+#     network = AdNetwork.query.get_or_404(network_id)
+#     db.session.delete(network)
+#     db.session.commit()
+#     return jsonify({"message": f"Ad network {network_id} deleted"}), 200
 
 
 
@@ -1998,7 +2627,10 @@ def delete_ad_network(network_id):
 
 
 # GET all daily tasks
-@app.route("/daily-tasks", methods=["GET"])
+@app.route("/admin/daily-tasks", methods=["GET"])
+@jwt_required()
+# @admin_required
+@moderator_required
 def get_tasks():
     tasks = DailyTask.query.all()
     return jsonify([(task.to_dict()) for task in tasks]), 200
@@ -2010,7 +2642,7 @@ def get_tasks():
 
 
 @app.route('/usercampaigns/unclaimed', methods=['GET'])
-@jwt_required
+@jwt_required_in_app
 def get_unclaimed_campaigns():
     """Return all campaigns that the current user hasn't completed yet and where completions haven't reached the goal, filtered by user's language with limits per category."""
     try:
@@ -2065,8 +2697,9 @@ def get_unclaimed_campaigns():
         return jsonify([]), 200
 
 
-@app.route("/daily-tasks/incomplete", methods=["GET"])
-@jwt_required
+@app.route("/admin/daily-tasks/incomplete", methods=["GET"])
+@jwt_required()
+@admin_required
 def get_incomplete_tasks():
     user_id = request.args.get('user_id')
     include_in_progress = request.args.get('include_in_progress', 'false').lower() == 'true'
@@ -2146,7 +2779,9 @@ def get_incomplete_tasks():
 
 # Add these to your Flask app
 @app.route('/admin/daily-tasks')
-@jwt_required
+
+@jwt_required()
+@admin_required
 def get_admin_daily_tasks():
     """Get all daily tasks for admin management"""
     tasks = DailyTask.query.order_by(DailyTask.created_at.desc()).all()
@@ -2157,13 +2792,18 @@ def get_admin_daily_tasks():
 
 # GET single task
 @app.route("/daily-tasks/<int:task_id>", methods=["GET"])
+@jwt_required()
+@admin_required
 def get_task(task_id):
     task = DailyTask.query.get_or_404(task_id)
     return jsonify(task.to_dict()), 200
 
 # CREATE new task
 
-@app.route("/daily-tasks", methods=["POST"])
+@app.route("/admin/daily-tasks", methods=["POST"])
+@jwt_required()
+# @admin_required
+@moderator_required
 def create_task():
     data = request.get_json()
 
@@ -2185,14 +2825,11 @@ def create_task():
 
     return jsonify(new_task.to_dict()), 201
 
-
-
-
-
-
-
 @app.route('/admin/daily-tasks/<int:task_id>', methods=['DELETE'])
-@jwt_required
+# @jwt_required_in_app
+@jwt_required()
+# @admin_required
+@moderator_required
 def delete_daily_task(task_id):
     """Delete a daily task"""
     task = DailyTask.query.get_or_404(task_id)
@@ -2210,7 +2847,10 @@ def delete_daily_task(task_id):
     return jsonify({"success": True, "message": "Task deleted successfully"}), 200
 
 @app.route('/admin/daily-tasks/<int:task_id>/status', methods=['PUT'])
-@jwt_required
+# @jwt_required_in_app
+@jwt_required()
+# @admin_required
+@moderator_required
 def update_daily_task_status(task_id):
     """Update task status"""
     task = DailyTask.query.get_or_404(task_id)
@@ -2230,7 +2870,7 @@ def update_daily_task_status(task_id):
 
 # Update the start_daily_task endpoint to handle different task types
 @app.route("/daily-tasks/start", methods=["POST"])
-@jwt_required
+@jwt_required_in_app
 def start_daily_task():
     data = request.get_json()
     user_id = data.get("userId")
@@ -2290,7 +2930,7 @@ def start_daily_task():
 
 # Update the claim_daily_task endpoint to handle verification for different task types
 @app.route("/daily-tasks/claim", methods=["POST"])
-@jwt_required
+@jwt_required_in_app
 def claim_daily_task():
     data = request.get_json()
     user_id = data.get("userId")
@@ -2363,7 +3003,7 @@ def claim_daily_task():
 
 
 @app.route("/user/daily-tasks/status")
-@jwt_required
+@jwt_required_in_app
 def get_user_daily_task_status():
     user_id = request.args.get("userId")
     
@@ -2397,8 +3037,11 @@ def get_user_daily_task_status():
 
 # Admin role decorator
 
-@app.route('/users', methods=['GET'])
-# @jwt_required
+@app.route('/admin/users', methods=['GET'])
+# @jwt_required_in_app
+@jwt_required()
+# @admin_required
+@moderator_required
 def get_all_users():
     try:
         
@@ -2442,6 +3085,8 @@ def get_all_users():
 
 
 @app.route('/admin/users/<int:user_id>', methods=['GET'])
+@jwt_required()
+@admin_required
 def get_user_by_id(user_id):
     try:
         user = User.query.get_or_404(user_id)
@@ -2451,7 +3096,8 @@ def get_user_by_id(user_id):
         return jsonify({"error": "Failed to fetch user"}), 500
 
 @app.route('/admin/users/<int:user_id>', methods=['PUT'])
-
+@jwt_required()
+@admin_required
 
 def update_user(user_id):
     try:
@@ -2495,7 +3141,8 @@ def update_user(user_id):
         return jsonify({"error": "Failed to update user"}), 500
 
 @app.route('/admin/users/<int:user_id>/ban', methods=['PATCH'])
-
+@jwt_required()
+@admin_required
 
 def toggle_user_ban(user_id):
     try:
@@ -2517,7 +3164,8 @@ def toggle_user_ban(user_id):
 
 @app.route('/admin/users/<int:user_id>/currency', methods=['PATCH'])
 
-
+@jwt_required()
+@admin_required
 def update_user_currency(user_id):
     try:
         user = User.query.get_or_404(user_id)
@@ -2577,7 +3225,8 @@ def update_user_game_progress(user_id):
         return jsonify({"error": "Failed to update game progress"}), 500
 
 @app.route('/admin/users/<int:user_id>/reset-daily', methods=['POST'])
-
+@jwt_required()
+@admin_required
 
 def reset_user_daily_stats(user_id):
     try:
@@ -2598,7 +3247,8 @@ def reset_user_daily_stats(user_id):
         return jsonify({"error": "Failed to reset daily stats"}), 500
 
 @app.route('/admin/users/search', methods=['GET'])
-
+@jwt_required()
+@admin_required
 
 def search_users():
     try:
@@ -2632,7 +3282,8 @@ def search_users():
 
 @app.route('/admin/users/bulk-update', methods=['POST'])
 
-
+@jwt_required()
+@admin_required
 def bulk_update_users():
     try:
         data = request.get_json()
@@ -2682,7 +3333,8 @@ def bulk_update_users():
         return jsonify({"error": "Failed to bulk update users"}), 500
 
 @app.route('/admin/users/export', methods=['GET'])
-
+@jwt_required()
+@admin_required
 
 def export_users():
     try:
@@ -2747,7 +3399,8 @@ def export_users():
 
 @app.route('/admin/users/stats', methods=['GET'])
 
-
+@jwt_required()
+@admin_required
 def get_user_stats():
     try:
         # Get total user count
@@ -2789,7 +3442,7 @@ def get_user_stats():
 
 
 @app.route('/api/referral/claim', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def claim_referral_earnings():
     try:
         data = request.get_json()
@@ -2827,7 +3480,7 @@ def claim_referral_earnings():
         return jsonify({"success": False, "message": "Internal server error"}), 500
 
 @app.route('/api/referral/invite', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def invite_friend_for_spin():
     user_id = request.json.get('user_id')
     
@@ -2859,7 +3512,7 @@ def invite_friend_for_spin():
     })
 
 @app.route('/api/referral/friends')
-@jwt_required
+@jwt_required_in_app
 def get_referral_friends():
     try:
         # Get user_id from query parameter
@@ -2919,7 +3572,7 @@ def get_referral_friends():
 
 
 @app.route('/api/referral/info')
-@jwt_required
+@jwt_required_in_app
 def get_referral_info():
     user_id = request.args.get('user_id', type=int)
     
@@ -2950,31 +3603,6 @@ def get_referral_info():
     })
 
 
-# def award_referral_earnings(user_id: int, task_reward: int):
-#     """Award 10% of task rewards to referrer"""
-#     user = User.query.get(user_id)
-#     if not user or not user.referred_by:
-#         return
-    
-#     referrer = User.query.get(user.referred_by)
-#     if not referrer:
-#         return
-    
-#     referral_bonus = int(task_reward * 0.10)  # 10% commission
-    
-#     # Update referrer's earnings
-#     referrer.referral_earnings += referral_bonus
-    
-#     # Update referral record
-#     referral = Referral.query.filter_by(
-#         referrer_id=referrer.id,
-#         referred_id=user.id
-#     ).first()
-    
-#     if referral:
-#         referral.earnings_generated += referral_bonus
-    
-#     db.session.commit()
 
 
 def award_referral_earnings(user_id: int, task_reward: int):
@@ -3012,6 +3640,8 @@ def award_referral_earnings(user_id: int, task_reward: int):
 
 
 @app.route('/admin/daily-reset', methods=['POST'])
+@jwt_required()
+@admin_required
 def daily_reset():
     """Reset daily counters (should be called by a cron job)"""
     try:
@@ -3033,7 +3663,7 @@ def daily_reset():
 
 
 @app.route('/user/deposit-ad-credit', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def deposit_ad_credit():
     data = request.get_json()
 
@@ -3224,7 +3854,7 @@ def reverse_invalid_deposit(user_id: int, amount: Decimal, transaction_id: int):
 # Add these endpoints to your app.py
 
 @app.route('/spin', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def spin_wheel():
     """Handle wheel spin and award prizes"""
     try:
@@ -3330,7 +3960,7 @@ def spin_wheel():
 
 
 @app.route('/api/spin/watch-ad', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def watch_ad_for_spin():
     """Handle ad watching for spin rewards"""
     try:
@@ -3375,7 +4005,7 @@ def watch_ad_for_spin():
 
 
 @app.route('/api/spin/history')
-@jwt_required
+@jwt_required_in_app
 def get_spin_history():
     """Get user's spin history"""
     try:
@@ -3437,7 +4067,7 @@ RECIPIENT_WALLET_ADDRESS = os.getenv('RECIPIENT_WALLET_ADDRESS')
 
 
 @app.route('/api/spin/buy', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def buy_spins():  # Remove async here
     """Purchase spins using coins, in-app TON, or blockchain TON"""
     try:
@@ -3640,7 +4270,7 @@ def verify_ton_transaction_sync_logic(transaction_boc: str, expected_amount: Dec
 
 
 @app.route('/api/withdraw/update-transaction', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def update_withdrawal_transaction():
     data = request.get_json()
     transaction_id = data.get("transactionId")
@@ -3666,7 +4296,7 @@ def update_withdrawal_transaction():
 
 # Get pending withdrawals for admin
 @app.route('/admin/pending-withdrawals', methods=['GET'])
-@jwt_required
+@jwt_required_in_app
 def get_pending_withdrawals():
     try:
         pending_withdrawals = Transaction.query.filter_by(
@@ -3693,7 +4323,7 @@ def get_pending_withdrawals():
 
 # Update the existing withdraw_ton endpoint to check settings
 @app.route('/api/withdraw/ton', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def withdraw_ton():
     data = request.get_json()
     amount = data.get("amount")
@@ -3789,7 +4419,7 @@ def withdraw_ton():
 # app.py - Add these endpoints
 # app.py
 @app.route('/api/transactions/withdrawals', methods=['GET'])
-@jwt_required
+@jwt_required_in_app
 def get_withdrawal_transactions():
     try:
         # Get pagination parameters
@@ -3874,8 +4504,9 @@ def get_withdrawal_transactions():
 
 
 # Settings endpoints
-@app.route('/api/settings', methods=['GET'])
-
+@app.route('/admin/api/settings', methods=['GET'])
+@jwt_required()
+@admin_required
 def get_settings():
     try:
         settings = Settings.query.first()
@@ -3892,7 +4523,9 @@ def get_settings():
     except Exception as e:
         return jsonify({'message': f'Error fetching settings: {str(e)}'}), 500
 
-@app.route('/api/settings', methods=['POST'])
+@app.route('/admin/api/settings', methods=['POST'])
+@jwt_required()
+@admin_required
 def update_settings():
     try:
         data = request.get_json()
@@ -3932,6 +4565,8 @@ def update_settings():
 
 
 @app.route('/api/quests', methods=['GET'])
+@jwt_required()
+# @admin_required
 def get_user_quests():
     user_id = request.args.get('user_id')
     if not user_id:
@@ -4011,6 +4646,9 @@ def calculate_quest_progress(quest, user):
     return 0
 
 @app.route('/api/quests/<quest_id>/claim', methods=['POST'])
+
+@jwt_required()
+@admin_required
 def claim_quest_reward(quest_id):
     user_id = request.json.get('user_id')
     if not user_id:
@@ -4053,6 +4691,10 @@ def claim_quest_reward(quest_id):
 
 # Admin routes for quest management
 @app.route('/admin/quests', methods=['GET'])
+
+# @jwt_required()
+# @admin_required
+@jwt_required_in_app
 def get_all_quests():
     quests = Quest.query.all()
     return jsonify([{
@@ -4067,7 +4709,12 @@ def get_all_quests():
         'updated_at': q.updated_at.isoformat()
     } for q in quests])
 
+
 @app.route('/admin/quests', methods=['POST'])
+
+@jwt_required()
+# @admin_required
+@moderator_required
 def create_quest():
     data = request.json
     quest = Quest(
@@ -4084,6 +4731,9 @@ def create_quest():
     return jsonify({'success': True, 'quest': quest.id})
 
 @app.route('/admin/quests/<quest_id>', methods=['PUT'])
+@jwt_required()
+@admin_required
+
 def update_quest(quest_id):
     quest = Quest.query.get(quest_id)
     if not quest:
@@ -4102,6 +4752,9 @@ def update_quest(quest_id):
     return jsonify({'success': True})
 
 @app.route('/admin/quests/<quest_id>', methods=['DELETE'])
+@jwt_required()
+# @admin_required
+@moderator_required
 def delete_quest(quest_id):
     try:
         quest = Quest.query.get(quest_id)
@@ -4129,7 +4782,10 @@ def delete_quest(quest_id):
 
 
 @app.route('/api/admin/dashboard/stats', methods=['GET'])
-@jwt_required
+
+@jwt_required()
+@moderator_required
+# @admin_required
 def get_dashboard_stats():
     try:
         # Check if user is admin (you'll need to implement this check)
@@ -4196,84 +4852,9 @@ def get_dashboard_stats():
 
 
 
-# @app.route('/campaign/reactivate', methods=['POST'])
-# @jwt_required
-# def reactivate_campaign():
-#     try:
-#         data = request.get_json()
-#         user_id = data.get('user_id')
-#         campaign_id = data.get('campaign_id')
-        
-#         if not user_id or not campaign_id:
-#             return jsonify({'success': False, 'message': 'Missing required fields'}), 400
-        
-#         user = User.query.get(user_id)
-        
-#         # Check if user has this campaign in their completions
-#         campaign_completion = db.session.query(user_task_completion).filter_by(
-#             user_id=user_id, 
-#             campaign_id=campaign_id
-#         ).first()
-        
-#         if not campaign_completion:
-#             return jsonify({'success': False, 'message': 'Campaign not found for this user'}), 404
-        
-#         # Get the campaign details
-#         campaign = UserCampaign.query.get(campaign_id)
-#         if not campaign:
-#             return jsonify({'success': False, 'message': 'Campaign not found'}), 404
-        
-#         # # Check if campaign is completed (based on completion status)
-#         # if campaign_completion.completed_at is not None:
-#         #     return jsonify({'success': False, 'message': 'Only completed campaigns can be reactivated'}), 400
-        
-#         # Calculate reactivation cost (same as original cost)
-#         reactivation_cost = campaign.cost
-        
-#         if user.ad_credit < reactivation_cost:
-#             return jsonify({
-#                 'success': False, 
-#                 'message': f'Insufficient funds. Need {reactivation_cost} TON, but only have {user.ad_credit} TON'
-#             }), 400
-        
-#         # Deduct from user's ad credit
-#         user.ad_credit -= reactivation_cost
-#         campaign.completions=0
-        
-#         # Reset the completion status
-#         db.session.execute(
-#             user_task_completion.update().where(
-#                 (user_task_completion.c.user_id == user_id) & 
-#                 (user_task_completion.c.campaign_id == campaign_id)
-#             ).values(
-#                 completed_at=None,
-#                 started_at=func.now()
-#             )
-#         )
-        
-#         # Update campaign cost (add to total spent by this user)
-#         # Since cost is stored per campaign, we might need a different approach
-#         # Let's track user's total spend separately or update the campaign cost
-        
-#         db.session.commit()
-        
-#         return jsonify({
-#             'success': True,
-#             'user': user.to_dict(),
-#             'message': 'Campaign reactivated successfully'
-#         })
-        
-#     except Exception as e:
-#         db.session.rollback()
-#         return jsonify({'success': False, 'message': str(e)}), 500
-   
-
-
-
-
 
 @app.route('/campaign/reactivate', methods=['POST'])
-@jwt_required
+@jwt_required_in_app
 def reactivate_campaign():
     try:
         data = request.get_json()
@@ -4406,6 +4987,8 @@ def reactivate_campaign():
 
 
 @app.route('/api/users/<int:user_id>/wallet-address', methods=['PUT'])
+@jwt_required()
+@admin_required
 def update_user_wallet_address(user_id):
     data = request.get_json()
     wallet_address = data.get("walletAddress")
@@ -4453,7 +5036,9 @@ from tonsdk.utils import to_nano, bytes_to_b64str
 
 
 # Updated reject endpoint (no changes needed here)
-@app.route('/api/admin/withdrawals/<int:transaction_id>/reject', methods=['POST'])
+@app.route('/admin/withdrawals/<int:transaction_id>/reject', methods=['POST'])
+@jwt_required()
+@admin_required
 def reject_withdrawal(transaction_id):
     try:
         transaction = Transaction.query.get_or_404(transaction_id)
@@ -4686,7 +5271,9 @@ def send_ton_real(to_address: str, amount_ton: float, memo: str = "") -> str:
 # Flask endpoints
 # ---------------------------
 
-@app.route('/api/admin/withdrawals/<int:transaction_id>/approve', methods=['POST'])
+@app.route('/admin/withdrawals/<int:transaction_id>/approve', methods=['POST'])
+@jwt_required()
+@admin_required
 def approve_withdrawal(transaction_id):
     try:
         transaction = Transaction.query.get_or_404(transaction_id)
@@ -4778,3 +5365,381 @@ def wallet_status():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+@app.route('/admin/system-users', methods=['POST'], endpoint="create_system_user")
+
+@jwt_required()
+@admin_required
+def create_system_user():
+    """Create a new system user"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['username', 'email', 'password', 'role']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({
+                    'success': False,
+                    'message': f'{field} is required'
+                }), 400
+        
+        # Check if username already exists
+        if SystemUser.get_by_username(data['username']):
+            return jsonify({
+                'success': False,
+                'message': 'Username already exists'
+            }), 400
+        
+        # Check if email already exists
+        if SystemUser.get_by_email(data['email']):
+            return jsonify({
+                'success': False,
+                'message': 'Email already exists'
+            }), 400
+        
+        # Validate role
+        try:
+            role = UserRole(data['role'])
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid role'
+            }), 400
+        
+        # Get current user ID for created_by
+        current_user_id = get_jwt_identity()
+        
+        # Create new user
+        new_user = SystemUser(
+            username=data['username'],
+            email=data['email'],
+            password=data['password'],
+            first_name=data.get('first_name'),
+            last_name=data.get('last_name'),
+            role=role,
+            created_by=current_user_id
+        )
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'user': new_user.to_dict(),
+            'message': 'User created successfully'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error creating user: {str(e)}'
+        }), 500
+
+
+
+# System Users Management Routes
+@app.route('/admin/system-users', methods=['GET'], endpoint="get_system_users")
+
+@jwt_required()
+@admin_required
+def get_system_users():
+    """Get all system users with pagination and search"""
+    try:
+        # Get query parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '', type=str)
+        
+        # Build query
+        query = SystemUser.query
+        
+        # Apply search filter
+        if search:
+            query = query.filter(
+                or_(
+                    SystemUser.username.ilike(f'%{search}%'),
+                    SystemUser.email.ilike(f'%{search}%'),
+                    SystemUser.first_name.ilike(f'%{search}%'),
+                    SystemUser.last_name.ilike(f'%{search}%')
+                )
+            )
+        
+        # Order by creation date and paginate
+        users = query.order_by(SystemUser.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        return jsonify({
+            'success': True,
+            'users': [user.to_dict() for user in users.items],
+            'pagination': {
+                'page': users.page,
+                'per_page': users.per_page,
+                'total': users.total,
+                'pages': users.pages
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error fetching users: {str(e)}'
+        }), 500
+
+
+
+
+@app.route('/admin/system-users/<int:user_id>', methods=['PUT'] )
+
+@jwt_required()
+@admin_required
+def update_system_user(user_id):
+    """Update a system user"""
+    try:
+        user = SystemUser.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        # Get current user
+        current_user_id = get_jwt_identity()
+        current_user = SystemUser.query.get(current_user_id)
+        
+        # Prevent users from modifying their own role/status
+        if user.id == current_user_id and 'role' in data:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot modify your own role'
+            }), 400
+        
+        # Update username if provided and changed
+        if 'username' in data and data['username'] != user.username:
+            if SystemUser.get_by_username(data['username']):
+                return jsonify({
+                    'success': False,
+                    'message': 'Username already exists'
+                }), 400
+            user.username = data['username']
+        
+        # Update email if provided and changed
+        if 'email' in data and data['email'] != user.email:
+            if SystemUser.get_by_email(data['email']):
+                return jsonify({
+                    'success': False,
+                    'message': 'Email already exists'
+                }), 400
+            user.email = data['email']
+        
+        # Update other fields
+        if 'first_name' in data:
+            user.first_name = data['first_name']
+        
+        if 'last_name' in data:
+            user.last_name = data['last_name']
+        
+        if 'role' in data:
+            try:
+                user.role = UserRole(data['role'])
+                # Update permissions based on new role
+                user.permissions = user.get_default_permissions(user.role)
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid role'
+                }), 400
+        
+        if 'status' in data:
+            try:
+                user.status = UserStatus(data['status'])
+            except ValueError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid status'
+                }), 400
+        
+        # Only super admin can modify permissions directly
+        if 'permissions' in data and current_user.role == UserRole.SUPER_ADMIN:
+            user.permissions = data['permissions']
+        
+        if 'timezone' in data:
+            user.timezone = data['timezone']
+        
+        if 'language' in data:
+            user.language = data['language']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'user': user.to_dict(),
+            'message': 'User updated successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error updating user: {str(e)}'
+        }), 500
+
+@app.route('/admin/system-users/<int:user_id>', methods=['DELETE'],endpoint="delete_system_user")
+
+@jwt_required()
+@admin_required
+def delete_system_user(user_id):
+    """Delete a system user"""
+    try:
+        user = SystemUser.query.get_or_404(user_id)
+        
+        # Get current user
+        current_user_id = get_jwt_identity()
+        
+        # Prevent users from deleting their own account
+        if user.id == current_user_id:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot delete your own account'
+            }), 400
+        
+        # Prevent deletion of super admin users
+        if user.role == UserRole.SUPER_ADMIN:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot delete super admin users'
+            }), 400
+        
+        db.session.delete(user)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'User deleted successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting user: {str(e)}'
+        }), 500
+
+@app.route('/admin/system-users/<int:user_id>/reset-password', methods=['POST'] ,endpoint="reset_system_user")
+
+@jwt_required()
+@admin_required
+def reset_system_user_password(user_id):
+    """Reset a system user's password"""
+    try:
+        user = SystemUser.query.get_or_404(user_id)
+        data = request.get_json()
+        
+        if not data or 'new_password' not in data:
+            return jsonify({
+                'success': False,
+                'message': 'New password is required'
+            }), 400
+        
+        # Validate password length
+        if len(data['new_password']) < 8:
+            return jsonify({
+                'success': False,
+                'message': 'Password must be at least 8 characters long'
+            }), 400
+        
+        # Reset password
+        user.set_password(data['new_password'])
+        user.must_change_password = True
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Password reset successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error resetting password: {str(e)}'
+        }), 500
+
+# Optional: Get current user profile
+@app.route('/admin/system-users/me', methods=['GET'],endpoint="get_system_user")
+
+@jwt_required()
+@admin_required
+def get_current_system_user():
+    """Get current logged-in system user profile"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = SystemUser.query.get(current_user_id)
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'user': user.to_dict()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error fetching user profile: {str(e)}'
+        }), 500
+
+# Optional: Update current user profile
+@app.route('/admin/system-users/me', methods=['PUT'])
+
+@jwt_required()
+@admin_required
+def update_current_system_user():
+    """Update current logged-in system user profile"""
+    try:
+        current_user_id = get_jwt_identity()
+        user = SystemUser.query.get(current_user_id)
+        
+        if not user:
+            return jsonify({
+                'success': False,
+                'message': 'User not found'
+            }), 404
+        
+        data = request.get_json()
+        
+        # Users can only update their own basic info, not role/permissions
+        allowed_fields = ['first_name', 'last_name', 'timezone', 'language']
+        
+        for field in allowed_fields:
+            if field in data:
+                setattr(user, field, data[field])
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'user': user.to_dict(),
+            'message': 'Profile updated successfully'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'message': f'Error updating profile: {str(e)}'
+        }), 500
