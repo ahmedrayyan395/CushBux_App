@@ -239,6 +239,31 @@ export const DAILY_TASKS: DailyTask[] = [
   { id: 'dt3', icon: ICONS.share, title: 'Invite a friend', reward: 2000, claimed: false, mandatory: true, action: 'share', category: 'Daily' },
 ];
 
+enum CampaignStatus {
+  ACTIVE = 'Active',
+  PAUSED = 'Paused', 
+  COMPLETED = 'Completed'
+}
+
+
+
+// In your types.ts file
+export interface DailyTask {
+  id: number;
+  title: string;
+  reward: number;
+  category: string;
+  ad_network_id?: number;
+  link: string;
+  status: CampaignStatus;
+  completions: number;
+  task_type: string;
+  adsgram_block_id?: string; // Add this
+  created_at: string;
+  updated_at: string;
+  // ... other properties
+}
+
 export const GAME_TASKS: GameTask[] = [];
 
 export const QUESTS: Quest[] = [
@@ -313,7 +338,7 @@ export const MOCK_PROMO_CODES: PromoCode[] = [
     { code: 'EXPIRED_CODE', type: 'COINS', value: 100, maxUses: 2, usedBy: [2, 3], expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() },
 ];
 
-export const CONVERSION_RATE = 1000000;
+export const CONVERSION_RATE = 10000000;
 export const MIN_WITHDRAWAL_TON=0.001;
 export const RECIPIENT_WALLET_ADDRESS = 'UQCUj1nsD2CHdyBoO8zIUqwlL-QXpyeUsMbePiegTqURiJu0'; // Placeholder address
 

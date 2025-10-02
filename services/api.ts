@@ -7,8 +7,16 @@ import type {  TransactionsFilters, TransactionsResponse } from '../types';
 // In-memory store
 let users: User[] = [ { ...INITIAL_USER }, ...generateMockUsers(50) ];
 let dailyTasks: DailyTask[] = [...DAILY_TASKS];
-export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
-
+// export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
+export type CreateDailyTaskDTO = {
+  title: string;
+  reward: number;
+  link: string;
+  category: string;
+  task_type: string;
+  adsgram_block_id?: string | null; // ✅ new field
+  ad_network_id?: number | null;
+};
 
 
 let gameTasks: UserCampaign[] = [...MOCK_USER_CAMPAIGNS].filter(c => c.category === 'Game');
@@ -36,10 +44,10 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-const API_BASE_URL = 'http://127.0.0.1:5000';
-// const API_BASE_URL = 'https://api.cashubux.com/';
+// const API_BASE_URL = 'http://127.0.0.1:5000';
+const API_BASE_URL = 'https://api.cashubux.com/';
 // 
-// const API_BASE_URL = 'https://76eb190d6536.ngrok-free.app';
+// const API_BASE_URL = 'https://722dd6b7979e.ngrok-free.app';
 
 // JWT Token management
 let authToken: string | null = null;
@@ -699,9 +707,20 @@ export const toggleAdNetwork = async (
 export const createDailyTask = async (task: CreateDailyTaskDTO) => {
   return apiFetch('/admin/daily-tasks', {
     method: 'POST',
-    body: JSON.stringify(task),
+    body: JSON.stringify({
+      title: task.title,
+      reward: task.reward,
+      link: task.link,
+      category: task.category,
+      task_type: task.task_type,
+      adsgram_block_id: task.adsgram_block_id, // ✅ new field
+      ad_network_id: task.ad_network_id,
+    }),
   });
 };
+
+
+
 
 export const fetchDailyTasksAPI = async () => {
   return apiFetch('/daily-tasks', { method: 'GET' });
@@ -1751,6 +1770,23 @@ export const rejectWithdrawal = async (transactionId: number): Promise<{success:
   return await apiFetch(`/admin/withdrawals/${transactionId}/reject`, { // Add /api prefix
     method: 'POST',
   });
+};
+
+
+
+
+
+export const fetchAdsGramTasks = async (userId: string): Promise<DailyTask[]> => {
+  try {
+    const response = await apiFetch<DailyTask[]>(`/daily-tasks/adsgram?user_id=${userId}`, { 
+      method: 'GET' 
+    });
+    
+    return response;
+  } catch (error) {
+    console.error('Error fetching AdsGram tasks:', error);
+    return [];
+  }
 };
 
 

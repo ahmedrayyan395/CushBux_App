@@ -13,6 +13,12 @@ import {
 } from '../services/api';
 import { ICONS, CONVERSION_RATE, TASK_TYPES } from '../constants';
 
+
+import {  useRef } from "react";
+import { JSX } from "react/jsx-runtime";
+
+
+
 // Declare the ad SDK function the same way as in SpinWheel page
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
@@ -32,6 +38,10 @@ const TasksLockedOverlay = () => (
     </p>
   </div>
 );
+
+
+
+
 
 const PromoCodeSection: React.FC<{ setUser: (user: User) => void }> = ({ setUser }) => {
   const [code, setCode] = useState('');
@@ -403,6 +413,113 @@ const ProgressIndicator: React.FC<{ completed: number; total: number }> = ({ com
   );
 };
 
+
+
+
+
+
+
+
+
+
+
+type TaskProps = {
+  debug?: boolean;
+  blockId: string;
+};
+
+const Task = ({ debug, blockId }: TaskProps) => {
+  const taskRef = useRef<JSX.IntrinsicElements["adsgram-task"]>(null);
+
+  useEffect(() => {
+    const handler = (event: CustomEvent) => {
+      // event.detail contains your block id
+      alert(`reward, detail = ${event.detail}`);
+    };
+    const task = taskRef.current;
+
+    if (task) {
+      task.addEventListener("reward", handler as EventListener);
+    }
+
+    return () => {
+      if (task) {
+        task.removeEventListener("reward", handler as EventListener);
+      }
+    };
+  }, []);
+
+  if (!customElements.get("adsgram-task")) {
+    return null;
+  }
+
+  return (
+    <>
+      <style>{`
+        .task {
+          --adsgram-task-font-size: 16px;
+          --adsgram-task-icon-size: 50px;
+          --adsgram-task-icon-title-gap: 15px;
+          --adsgram-task-button-width: 60px;
+          --adsgram-task-icon-border-radius: 8px;
+
+          display: block;
+          width: 328px;
+          padding: 8px 16px 8px 8px;
+          border-radius: 16px;
+          background-color: #1d2733;
+          font-family: Roboto, sans-serif;
+          color: white;
+        }
+        .reward {
+          margin: 5px 0 0 0;
+          font-size: 14px;
+        }
+        .button {
+          margin-left: 10px;
+          background-color: #50a8eb;
+          border-radius: 5px;
+          padding: 6px 12px;
+        }
+        .button_claim {
+          margin-left: 0;
+          background-color: #ee941c;
+        }
+        .button_done {
+          margin-left: 0;
+          background-color: #007539;
+        }
+      `}</style>
+
+      <adsgram-task
+        className="task"
+        data-block-id={blockId}
+        data-debug={debug}
+        ref={taskRef}
+      >
+        <span slot="reward" className="reward">
+          1000 coins
+        </span>
+        <div slot="button" className="button">
+          go
+        </div>
+        <div slot="claim" className="button_claim">
+          claim
+        </div>
+        <div slot="done" className="button_done">
+          done
+        </div>
+      </adsgram-task>
+    </>
+  );
+};
+
+
+
+
+
+
+// ---------------- Main Earnings Page ----------------
 // ---------------- Main Earnings Page ----------------
 const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({ setUser, user }) => {
   const [campaigns, setCampaigns] = useState<UserCampaign[]>([]);
@@ -441,6 +558,17 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     }
   };
 
+  // Filter out AdsGram tasks from daily tasks (so they don't show in daily section)
+  const regularDailyTasks = dailyTasks.filter(task => 
+    !(task as any).adsgram_block_id || !(task as any).adsgram_block_id.startsWith('task-')
+  );
+
+  // Get only AdsGram tasks
+  const adsgramTasks = dailyTasks.filter(task => 
+    (task as any).adsgram_block_id && (task as any).adsgram_block_id.startsWith('task-')
+  );
+
+  // Rest of your existing functions remain exactly the same...
   const showAdIfAvailable = async (): Promise<boolean> => {
     try {
       await show_9692552();
@@ -642,11 +770,11 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   const socialTasks = campaigns.filter(c => c.category === "SOCIAL");
   const partnerTasks = campaigns.filter(c => c.category === "PARTNER");
 
-  const dailyTasksCompleted = dailyTasks.every(task => 
+  const dailyTasksCompleted = regularDailyTasks.every(task => 
     dailyTaskStatuses[task.id]?.claimed === true
   );
 
-  const completedDailyCount = dailyTasks.filter(task => 
+  const completedDailyCount = regularDailyTasks.filter(task => 
     dailyTaskStatuses[task.id]?.claimed === true
   ).length;
 
@@ -661,17 +789,17 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
 
       <PromoCodeSection setUser={setUser} />
 
-      {/* Daily tasks with progress */}
+      {/* Daily tasks with progress (EXCLUDES AdsGram tasks) */}
       <section className="mb-8">
         <SectionHeader
           title="Daily Tasks"
           icon={ICONS.tasks}
-          taskCount={dailyTasks.length}
+          taskCount={regularDailyTasks.length}
         />
-        <ProgressIndicator completed={completedDailyCount} total={dailyTasks.length} />
+        <ProgressIndicator completed={completedDailyCount} total={regularDailyTasks.length} />
         <div className="mt-6 space-y-4">
-          {dailyTasks.length > 0 ? (
-            dailyTasks.map((task) => {
+          {regularDailyTasks.length > 0 ? (
+            regularDailyTasks.map((task) => {
               const buttonState = getDailyTaskButtonState(task.id);
               return (
                 <DailyTaskItem
@@ -735,10 +863,31 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
             TaskComponent={CampaignTaskItem}
             onShowMore={partnerTasks.length > 5 ? () => loadMoreCampaigns('PARTNER') : undefined}
           />
+
+          {/* Simple AdsGram Tasks Section - Just loop through and render Task components */}
+          {adsgramTasks.length > 0 && (
+            <section className="mb-8">
+              <SectionHeader
+                title="AdsGram Tasks"
+                icon={ICONS.checkIn}
+                taskCount={adsgramTasks.length}
+              />
+              <div className="space-y-4">
+                {adsgramTasks.map((task) => (
+                  <Task 
+                    // key={task.id}
+                    debug={false} 
+                    blockId={(task as any).adsgram_block_id} 
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
 
 export default EarningsPage;

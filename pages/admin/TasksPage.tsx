@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createDailyTask, fetchDailyTasks, deleteDailyTask, updateDailyTaskStatus } from '../../services/api';
 import type { DailyTask } from '../../types';
-export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
 
+export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
 
 const TasksPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -11,8 +11,8 @@ const TasksPage: React.FC = () => {
     link: '',
     ad_network_id: '',
     category: 'Daily' as 'Daily' | 'Game' | 'Social' | 'Partner',
-    taskType: '', // Add this line with empty string as default
-
+    taskType: '',
+    adsgram_block_id: '', // New field for Adsgram block ID
   });
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,39 +37,43 @@ const TasksPage: React.FC = () => {
     }
   };
 
-  
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsLoading(true);
-  setFeedback(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setFeedback(null);
 
-  try {
-    const result = await createDailyTask({
-      title: formData.title,
-      reward: parseInt(formData.reward, 10),
-      link: formData.link,
-      ad_network_id: formData.ad_network_id ? parseInt(formData.ad_network_id, 10) : null,
-      category: 'Daily',
-      task_type: formData.taskType || "AD", // ✅ new field
-    });
+    try {
+      const result = await createDailyTask({
+        title: formData.title || null,
+        reward: parseInt(formData.reward, 10),
+        link: formData.link,
+        ad_network_id: formData.ad_network_id ? parseInt(formData.ad_network_id, 10) : null,
+        category: 'Daily',
+        task_type: formData.taskType || "AD",
+        adsgram_block_id: formData.adsgram_block_id || null, // ✅ new field
+      });
 
-    if ((result as any).success !== false) {
-      setFeedback({ message: 'Daily Task created successfully!', isError: false });
-      setFormData({ title: '', reward: '', link: '', ad_network_id: '', category: 'Daily', taskType: '' });
-      await loadDailyTasks();
-    } else {
-      setFeedback({ message: 'Failed to create task.', isError: true });
+      if ((result as any).success !== false) {
+        setFeedback({ message: 'Daily Task created successfully!', isError: false });
+        setFormData({ 
+          title: '', 
+          reward: '', 
+          link: '', 
+          ad_network_id: '', 
+          category: 'Daily', 
+          taskType: '',
+          adsgram_block_id: '' 
+        });
+        await loadDailyTasks();
+      } else {
+        setFeedback({ message: 'Failed to create task.', isError: true });
+      }
+    } catch (error) {
+      setFeedback({ message: 'An error occurred.', isError: true });
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error) {
-    setFeedback({ message: 'An error occurred.', isError: true });
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-
-
-
+  };
 
   const handleDeleteTask = async (taskId: number) => {
     if (!confirm('Are you sure you want to delete this task?')) return;
@@ -123,15 +127,12 @@ const handleSubmit = async (e: React.FormEvent) => {
     });
   };
 
-
-
   const TASK_TYPES = [
-  { value: "AD", label: "AD" },
-  { value: "CHANNEL", label: "CHANNEL" },
-  { value: "BOT", label: "Bot" },
-];
-
-
+    { value: "AD", label: "AD" },
+    { value: "CHANNEL", label: "CHANNEL" },
+    { value: "BOT", label: "Bot" },
+    { value: "ADSGRAM", label: "Adsgram" }, // ✅ New Adsgram type
+  ];
 
   return (
     <div className="space-y-8">
@@ -147,7 +148,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               <input
                 id="title"
                 type="text"
-                required
+                
                 value={formData.title}
                 onChange={e => setFormData({ ...formData, title: e.target.value })}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"
@@ -156,25 +157,24 @@ const handleSubmit = async (e: React.FormEvent) => {
             </div>
 
             <div>
-            <label htmlFor="taskType" className="block text-sm font-medium text-slate-300 mb-2">
-              Task Type
-            </label>
-            <select
-  id="taskType"
-  required
-  value={formData.taskType || ''} // Handle undefined case
-  onChange={e => setFormData({ ...formData, taskType: e.target.value })}
-  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
->
-  <option value="" disabled>Select a type</option>
-  {TASK_TYPES.map(type => (
-    <option key={type.value} value={type.value}>
-      {type.label}
-    </option>
-  ))}
-</select>
-             </div>
-
+              <label htmlFor="taskType" className="block text-sm font-medium text-slate-300 mb-2">
+                Task Type
+              </label>
+              <select
+                id="taskType"
+                required
+                value={formData.taskType || ''}
+                onChange={e => setFormData({ ...formData, taskType: e.target.value })}
+                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white"
+              >
+                <option value="" disabled>Select a type</option>
+                {TASK_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div>
               <label htmlFor="reward" className="block text-sm font-medium text-slate-300 mb-2">Coin Reward</label>
@@ -194,7 +194,6 @@ const handleSubmit = async (e: React.FormEvent) => {
               <input
                 id="link"
                 type="url"
-                
                 value={formData.link}
                 onChange={e => setFormData({ ...formData, link: e.target.value })}
                 className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"
@@ -202,17 +201,25 @@ const handleSubmit = async (e: React.FormEvent) => {
               />
             </div>
 
-            {/* <div>
-              <label htmlFor="ad_network_id" className="block text-sm font-medium text-slate-300 mb-2">Ad Network ID (optional)</label>
-              <input
-                id="ad_network_id"
-                type="number"
-                value={formData.ad_network_id}
-                onChange={e => setFormData({ ...formData, ad_network_id: e.target.value })}
-                className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"
-                placeholder="Ad Network ID"
-              />
-            </div> */}
+            {/* Adsgram Block ID Field - Only show when Adsgram type is selected */}
+            {formData.taskType === 'ADSGRAM' && (
+              <div className="md:col-span-2">
+                <label htmlFor="adsgram_block_id" className="block text-sm font-medium text-slate-300 mb-2">
+                  Adsgram Block ID
+                </label>
+                <input
+                  id="adsgram_block_id"
+                  type="text"
+                  value={formData.adsgram_block_id}
+                  onChange={e => setFormData({ ...formData, adsgram_block_id: e.target.value })}
+                  className="w-full px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg"
+                  placeholder="e.g., task-15520"
+                />
+                <p className="text-slate-400 text-sm mt-1">
+                  Enter the Adsgram block ID for this task
+                </p>
+              </div>
+            )}
 
             
           </div>
@@ -264,6 +271,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               <thead>
                 <tr className="border-b border-slate-700">
                   <th className="px-4 py-3 text-left text-slate-300 font-medium">Title</th>
+                  <th className="px-4 py-3 text-left text-slate-300 font-medium">Type</th>
                   <th className="px-4 py-3 text-left text-slate-300 font-medium">Reward</th>
                   <th className="px-4 py-3 text-left text-slate-300 font-medium">Completions</th>
                   <th className="px-4 py-3 text-left text-slate-300 font-medium">Status</th>
@@ -277,16 +285,34 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
                         <span className="text-white font-medium">{task.title}</span>
-                        <a 
-                          href={task.link} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-400 text-sm hover:underline truncate max-w-xs"
-                          title={task.link}
-                        >
-                          {task.link}
-                        </a>
+                        {task.link && (
+                          <a 
+                            href={task.link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-400 text-sm hover:underline truncate max-w-xs"
+                            title={task.link}
+                          >
+                            {task.link}
+                          </a>
+                        )}
+                        {task.adsgram_block_id && (
+                          <span className="text-purple-400 text-sm mt-1">
+                            Block ID: {task.adsgram_block_id}
+                          </span>
+                        )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        task.task_type === 'ADSGRAM' 
+                          ? 'bg-purple-500 text-purple-100'
+                          : task.task_type === 'AD'
+                          ? 'bg-blue-500 text-blue-100'
+                          : 'bg-gray-500 text-gray-100'
+                      }`}>
+                        {task.task_type}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-green-400 font-medium">
                       {task.reward.toLocaleString()} coins
@@ -331,7 +357,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       {/* Statistics Summary */}
       <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
         <h2 className="text-2xl font-bold text-white mb-6">Statistics Summary</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-slate-750 p-4 rounded-lg text-center">
             <h3 className="text-lg font-semibold text-slate-300">Total Tasks</h3>
             <p className="text-3xl font-bold text-white">{dailyTasks.length}</p>
@@ -339,7 +365,13 @@ const handleSubmit = async (e: React.FormEvent) => {
           <div className="bg-slate-750 p-4 rounded-lg text-center">
             <h3 className="text-lg font-semibold text-slate-300">Active Tasks</h3>
             <p className="text-3xl font-bold text-green-500">
-              {dailyTasks.filter(t => t.status === 'Active').length}
+              {dailyTasks.filter(t => t.status === 'ACTIVE').length}
+            </p>
+          </div>
+          <div className="bg-slate-750 p-4 rounded-lg text-center">
+            <h3 className="text-lg font-semibold text-slate-300">Adsgram Tasks</h3>
+            <p className="text-3xl font-bold text-purple-500">
+              {dailyTasks.filter(t => t.task_type === 'ADSGRAM').length}
             </p>
           </div>
           <div className="bg-slate-750 p-4 rounded-lg text-center">

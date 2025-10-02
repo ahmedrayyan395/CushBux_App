@@ -58,7 +58,7 @@ CORS(
         "https://bot.cashubux.com",
         "https://admin.cashubux.com",
         "http://localhost:3000",
-        "https://9bbc9974b41c.ngrok-free.app",  # For local development
+        "https://a93d3eb3066a.ngrok-free.app",  # For local development
     ],
     supports_credentials=True,
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
@@ -714,13 +714,17 @@ class LevelCompletion(db.Model):
     # Relationship
     campaign = db.relationship('UserCampaign', backref='level_completions')
 
+
+
 class DailyTask(db.Model):
     __tablename__ = "daily_tasks"
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    title = db.Column(db.String, nullable=False)
+    title = db.Column(db.String, nullable=True)
     reward = db.Column(db.Integer, nullable=False)
     category = db.Column(db.String, default="Daily")
+    adsgram_block_id = db.Column(db.String, nullable=True)  # Format: task-XXXXX
+
 
     # ✅ use AdNetwork.id instead of .name
     ad_network_id = db.Column(db.Integer, db.ForeignKey("ad_network.id"), nullable=True)
@@ -729,8 +733,8 @@ class DailyTask(db.Model):
     status = db.Column(db.Enum(CampaignStatus), default=CampaignStatus.ACTIVE)
     completions = db.Column(db.Integer, default=0)
 
-    # ✅ New column: task_type
-    task_type = db.Column(db.String, default="general", nullable=False)
+    # ✅ New column: task_type with proper default
+    task_type = db.Column(db.String, default="AD", nullable=False)  # Changed default from "general" to "AD"
 
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
@@ -746,17 +750,20 @@ class DailyTask(db.Model):
 
     def to_dict(self):
         return {
-            "id": self.id,
-            "title": self.title,
-            "reward": self.reward,
-            "category": self.category,
-            "link": self.link,
-            "status": self.status.value if self.status else None,
-            "completions": self.completions,
-            "taskType": self.task_type,  # ✅ expose as camelCase
-            "ad_network_id": self.ad_network_id,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            
+        "id": self.id,
+        "title": self.title,
+        "reward":self.reward,
+        "category": self.category,
+        "link": self.link,
+        "status": self.status.value if self.status else None,
+        "completions": self.completions,
+        "taskType": self.task_type,
+        "task_type": self.task_type,
+        "ad_network_id": self.ad_network_id,
+        "adsgram_block_id": self.adsgram_block_id,  # Make sure this is included
+        "created_at": self.created_at.isoformat() if self.created_at else None,
+        "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
 
 
@@ -1428,10 +1435,10 @@ def refresh_token():
         # Now verify the token properly
         try:
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        except jwt.ExpiredSignatureError:
+        except pyjwt.ExpiredSignatureError:
             # Token is expired but we'll still allow refresh if user is valid
             pass
-        except jwt.InvalidTokenError:
+        except pyjwt.InvalidTokenError:
             return jsonify({"error": "Invalid token"}), 401
         
         # Create new token
@@ -1463,8 +1470,10 @@ def jwt_required_in_app(f):
         try:
             token = token.replace('Bearer ', '')
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            # FIX: Use 'sub' claim instead of 'user_id'
-            request.user_id = payload['sub']  # Flask-JWT-Extended puts identity in 'sub'
+            request.user_id = payload['user_id']
+            # # FIX: Use 'sub' claim instead of 'user_id'
+            # request.user_id = payload['sub']  # Flask-JWT-Extended puts identity in 'sub'
+            
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token expired"}), 401
         except jwt.InvalidTokenError:
@@ -1536,13 +1545,13 @@ def dev_login(user_id):
         'user_id': user.id,
         'exp': datetime.now() + timedelta(days=7)  # UTC is safer for JWT
     }
-    # jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    jwt_token = pyjwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
     app.logger.info(f"DEV LOGIN SUCCESS: Session created for User ID {user.id} ({user.name})")
 
     # Return user data with token
     user_data = user.to_dict()
-    # user_data['token'] = jwt_token
+    user_data['token'] = jwt_token
 
     return jsonify(user_data)
 
@@ -1765,7 +1774,7 @@ def auth_with_telegram():
             'user_id': user.id,
             'exp': datetime.utcnow() + timedelta(days=7)
         }
-        jwt_token = jwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        jwt_token = pyjwt.encode(token_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
         
         # Return user data with token
         user_dict = user.to_dict()
@@ -2218,8 +2227,9 @@ def claim_task():
     campaign.completions += 1
 
     # Reward user
-    CONVERSION_RATE = 1000000
+    CONVERSION_RATE = 100000000
     reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
+    
     user.coins += reward
     user.tasks_completed_today_for_spin += 1
     user.spins += 1
@@ -2697,83 +2707,37 @@ def get_unclaimed_campaigns():
         return jsonify([]), 200
 
 
-@app.route("/admin/daily-tasks/incomplete", methods=["GET"])
-@jwt_required()
-@admin_required
+
+
+
+@app.route("/daily-tasks/incomplete", methods=["GET"])
 def get_incomplete_tasks():
     user_id = request.args.get('user_id')
-    include_in_progress = request.args.get('include_in_progress', 'false').lower() == 'true'
     
     if not user_id:
         return jsonify({"error": "user_id parameter is required"}), 400
     
-    try:
-        # Get current time for 24-hour check
-        current_time = datetime.utcnow()
-        
-        # Subquery for completed tasks
-        completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
-            .filter(user_daily_task_completions.c.user_id == user_id)\
-            .filter(user_daily_task_completions.c.completed_at.isnot(None))\
-            .subquery()
-        
-        # Base query for incomplete tasks
-        query = DailyTask.query\
-            .filter_by(status=CampaignStatus.ACTIVE)\
-            .filter(~DailyTask.id.in_(completed_subquery))
-        
-        if not include_in_progress:
-            # Exclude tasks that are in progress but within 24 hours
-            # Get tasks that are either not started OR started but over 24 hours ago
-            in_progress_subquery = db.session.query(user_daily_task_completions.c.task_id)\
-                .filter(user_daily_task_completions.c.user_id == user_id)\
-                .filter(user_daily_task_completions.c.started_at.isnot(None))\
-                .filter(user_daily_task_completions.c.completed_at.is_(None))\
-                .subquery()
-            
-            # Only include tasks that are either:
-            # 1. Not started at all, OR
-            # 2. Started but over 24 hours ago (need to be restarted)
-            query = query.filter(
-                ~DailyTask.id.in_(in_progress_subquery) | 
-                (DailyTask.id.in_(in_progress_subquery) & 
-                 user_daily_task_completions.c.started_at <= (current_time - timedelta(hours=24)))
-            )
-        
-        incomplete_tasks = query.all()
-        
-        # Convert to dict with completion status and time info
-        tasks_data = []
-        for task in incomplete_tasks:
-            # Check if task is in progress
-            progress_record = db.session.query(user_daily_task_completions)\
-                .filter_by(user_id=user_id, task_id=task.id)\
-                .first()
-            
-            task_dict = task.to_dict()
-            task_dict['completed'] = False
-            task_dict['claimed'] = False
-            task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
-            task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
-            
-            # Calculate if within 24 hours
-            if task_dict['in_progress'] and progress_record.started_at:
-                hours_passed = (current_time - progress_record.started_at).total_seconds() / 3600
-                task_dict['within_24_hours'] = hours_passed <= 24
-            else:
-                task_dict['within_24_hours'] = False
-                
-            tasks_data.append(task_dict)
-        
-        return jsonify(tasks_data), 200
-        
-    except Exception as e:
-        print(f"Error fetching incomplete daily tasks: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-
-
-
+    # Use a subquery to find incomplete tasks
+    completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+        .filter(user_daily_task_completions.c.user_id == user_id)\
+        .filter(user_daily_task_completions.c.completed_at.isnot(None))\
+        .subquery()
+    
+    # Get tasks that are NOT in the completed subquery
+    incomplete_tasks = DailyTask.query\
+        .filter_by(status=CampaignStatus.ACTIVE)\
+        .filter(~DailyTask.id.in_(completed_subquery))\
+        .all()
+    
+    # Convert to dict with completion status
+    tasks_data = []
+    for task in incomplete_tasks:
+        task_dict = task.to_dict()  # This should already include adsgram_block_id
+        task_dict['completed'] = False
+        task_dict['claimed'] = False
+        tasks_data.append(task_dict)
+    
+    return jsonify(tasks_data), 200
 
 
 
@@ -2807,23 +2771,35 @@ def get_task(task_id):
 def create_task():
     data = request.get_json()
 
-    if not data or "title" not in data or "reward" not in data or "link" not in data:
-        return jsonify({"error": "Missing required fields"}), 400
+    # Remove title from required fields check
+    if not data or "reward" not in data or "link" not in data:
+        return jsonify({"error": "Missing required fields: reward and link are required"}), 400
+
+    # Validate adsgram_block_id format if provided
+    adsgram_block_id = data.get("adsgram_block_id")
+    if adsgram_block_id and not re.match(r'^task-\d+$', adsgram_block_id):
+        return jsonify({"error": "Adsgram block ID must be in format: task-XXXXX"}), 400
+
+    # Allow empty title
+    title = data.get("title", "")
 
     new_task = DailyTask(
-        title=data["title"],
+        title=title,  # Can be empty string
         reward=data["reward"],
         link=data["link"],
         category=data.get("category", "Daily"),
-        task_type=data.get("task_type", "general"),  # ✅ new field
+        task_type=data.get("task_type", "general"),
         status=CampaignStatus(data.get("status", "Active")),
         ad_network_id=data.get("ad_network_id"),
+        adsgram_block_id=adsgram_block_id,
     )
 
     db.session.add(new_task)
     db.session.commit()
 
     return jsonify(new_task.to_dict()), 201
+
+
 
 @app.route('/admin/daily-tasks/<int:task_id>', methods=['DELETE'])
 # @jwt_required_in_app
@@ -4565,8 +4541,7 @@ def update_settings():
 
 
 @app.route('/api/quests', methods=['GET'])
-@jwt_required()
-# @admin_required
+@jwt_required_in_app
 def get_user_quests():
     user_id = request.args.get('user_id')
     if not user_id:
@@ -4646,9 +4621,7 @@ def calculate_quest_progress(quest, user):
     return 0
 
 @app.route('/api/quests/<quest_id>/claim', methods=['POST'])
-
-@jwt_required()
-@admin_required
+@jwt_required_in_app
 def claim_quest_reward(quest_id):
     user_id = request.json.get('user_id')
     if not user_id:
@@ -4987,8 +4960,8 @@ def reactivate_campaign():
 
 
 @app.route('/api/users/<int:user_id>/wallet-address', methods=['PUT'])
-@jwt_required()
-@admin_required
+# @jwt_required()
+# @admin_required
 def update_user_wallet_address(user_id):
     data = request.get_json()
     wallet_address = data.get("walletAddress")
@@ -5743,3 +5716,84 @@ def update_current_system_user():
             'success': False,
             'message': f'Error updating profile: {str(e)}'
         }), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+@app.route("/daily-tasks/adsgram", methods=["GET"])
+def get_adsgram_tasks():
+    user_id = request.args.get('user_id')
+    
+    if not user_id:
+        return jsonify({"error": "user_id parameter is required"}), 400
+    
+    try:
+        # Get current time for 24-hour check
+        current_time = datetime.utcnow()
+        
+        # Subquery for completed tasks
+        completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+            .filter(user_daily_task_completions.c.user_id == user_id)\
+            .filter(user_daily_task_completions.c.completed_at.isnot(None))\
+            .subquery()
+        
+        # Query specifically for AdsGram tasks (those with adsgram_block_id)
+        query = DailyTask.query\
+            .filter_by(status=CampaignStatus.ACTIVE)\
+            .filter(DailyTask.adsgram_block_id.isnot(None))\
+            .filter(~DailyTask.id.in_(completed_subquery))
+        
+        # Exclude in-progress tasks within 24 hours
+        in_progress_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+            .filter(user_daily_task_completions.c.user_id == user_id)\
+            .filter(user_daily_task_completions.c.started_at.isnot(None))\
+            .filter(user_daily_task_completions.c.completed_at.is_(None))\
+            .subquery()
+        
+        query = query.filter(
+            ~DailyTask.id.in_(in_progress_subquery) | 
+            (DailyTask.id.in_(in_progress_subquery) & 
+             user_daily_task_completions.c.started_at <= (current_time - timedelta(hours=24)))
+        )
+        
+        adsgram_tasks = query.all()
+        
+        # Convert to dict with additional info
+        tasks_data = []
+        for task in adsgram_tasks:
+            progress_record = db.session.query(user_daily_task_completions)\
+                .filter_by(user_id=user_id, task_id=task.id)\
+                .first()
+            
+            task_dict = task.to_dict()
+            task_dict['completed'] = False
+            task_dict['claimed'] = False
+            task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
+            task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
+            
+            tasks_data.append(task_dict)
+        
+        return jsonify(tasks_data), 200
+        
+    except Exception as e:
+        print(f"Error fetching AdsGram tasks: {e}")
+        return jsonify({"error": "Internal server error"}), 500    

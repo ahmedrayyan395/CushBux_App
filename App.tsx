@@ -231,7 +231,9 @@ const App: React.FC = () => {
                   <Route index element={<Navigate to="dashboard" />} />
                 </Route>
 
-                {/* User Routes - Only show if we have a Telegram user AND not in admin mode */}
+
+
+                User Routes - Only show if we have a Telegram user AND not in admin mode
                 {shouldShowUserRoutes && (
                   <>
                     <Route path="/new-task" element={<NewTaskPage user={user} setUser={handleSetUser} />} />

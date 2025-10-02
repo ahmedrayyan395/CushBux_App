@@ -128,6 +128,7 @@ export interface Transaction {
 
 // types.ts
 export interface DailyTask {
+  adsgram_block_id: any;
   id: number;
   title: string;
   reward: number;
