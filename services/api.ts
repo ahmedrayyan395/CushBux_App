@@ -6,7 +6,7 @@ import type {  TransactionsFilters, TransactionsResponse } from '../types';
 
 // In-memory store
 let users: User[] = [ { ...INITIAL_USER }, ...generateMockUsers(50) ];
-let dailyTasks: DailyTask[] = [...DAILY_TASKS];
+// let dailyTasks: DailyTask[] = [...DAILY_TASKS];
 // export type CreateDailyTaskDTO = Omit<DailyTask, "id" | "status" | "completions" | "created_at" | "updated_at">;
 export type CreateDailyTaskDTO = {
   title: string;
@@ -44,8 +44,8 @@ const simulateDelay = (delay = 500) => new Promise(resolve => setTimeout(resolve
 // --- User-facing API ---
 
 
-// const API_BASE_URL = 'http://127.0.0.1:5000';
-const API_BASE_URL = 'https://api.cashubux.com/';
+const API_BASE_URL = 'http://127.0.0.1:5000';
+// const API_BASE_URL = 'https://api.cashubux.com/';
 // 
 // const API_BASE_URL = 'https://722dd6b7979e.ngrok-free.app';
 
@@ -1792,11 +1792,49 @@ export const fetchAdsGramTasks = async (userId: string): Promise<DailyTask[]> =>
 
 
 
+// Add this function to your api.ts file
+// export const fetchTaskByBlockId = async (blockId: string, userId: string): Promise<DailyTask | null> => {
+//   try {
+//     const response = await apiFetch<DailyTask>(`/api/daily-tasks/by-block-id/${blockId}`, {
+//       method: 'GET'
+//     });
+//     return response;
+//   } catch (error) {
+//     console.error('Error fetching task by block ID:', error);
+//     return null;
+//   }
+// };
 
 
 
+export const completeAdsGramTask = async (userId: string, blockId: string): Promise<any> => {
+  try {
+    const response = await apiFetch<any>('/adsgram-task/complete', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        blockId
+      })
+    });
+    return response;
+  } catch (error) {
+    console.error('Error completing AdsGram task:', error);
+    throw error;
+  }
+};
 
 
+export const fetchTaskByBlockId = async (blockId: string, userId: string): Promise<DailyTask | null> => {
+  try {
+    const response = await apiFetch<DailyTask>(`/api/daily-tasks/by-block-id/${blockId}?user_id=${userId}`, {
+      method: 'GET'
+    });
+    return response;
+  } catch (error) {
+    console.error('Error fetching task by block ID:', error);
+    return null;
+  }
+};
 
 
 

@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: f586b53120c5
+Revision ID: e7e443a0f57d
 Revises: 
-Create Date: 2025-09-30 13:51:31.520873
+Create Date: 2025-10-04 02:49:10.396282
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'f586b53120c5'
+revision = 'e7e443a0f57d'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -91,6 +91,7 @@ def upgrade():
     sa.Column('id', sa.BigInteger(), autoincrement=False, nullable=False, comment='Corresponds to Telegram ID'),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('coins', sa.BigInteger(), nullable=False),
+    sa.Column('rings', sa.BigInteger(), nullable=True),
     sa.Column('ton', sa.Numeric(precision=20, scale=9), nullable=False),
     sa.Column('referral_earnings', sa.BigInteger(), nullable=False),
     sa.Column('spins', sa.Integer(), nullable=False),
@@ -125,9 +126,10 @@ def upgrade():
     )
     op.create_table('daily_tasks',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('title', sa.String(), nullable=False),
+    sa.Column('title', sa.String(), nullable=True),
     sa.Column('reward', sa.Integer(), nullable=False),
     sa.Column('category', sa.String(), nullable=True),
+    sa.Column('adsgram_block_id', sa.String(), nullable=True),
     sa.Column('ad_network_id', sa.Integer(), nullable=True),
     sa.Column('link', sa.String(), nullable=False),
     sa.Column('status', sa.Enum('ACTIVE', 'PAUSED', 'COMPLETED', name='campaignstatus'), nullable=True),

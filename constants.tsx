@@ -1,5 +1,5 @@
 import React from 'react';
-import type { DailyTask, GameTask, Quest, Transaction, CompletionTier, LanguageOption, Friend, UserCampaign, PromoCode, AdminUser, User } from './types';
+import type {  GameTask, Quest, Transaction, CompletionTier, LanguageOption, Friend, UserCampaign, PromoCode, AdminUser, User } from './types';
 
 export const ICONS = {
   calendar: (
@@ -12,6 +12,21 @@ export const ICONS = {
       <line x1="3" y1="10" x2="21" y2="10"/>
     </svg>
   ),
+ring: (
+  <svg xmlns="http://www.w3.org/2000/svg"
+    width="16" height="16" viewBox="0 0 24 24"
+    fill="none" stroke="#1E90FF" strokeWidth="2.5"
+    strokeLinecap="round" strokeLinejoin="round">
+
+    {/* Large Ring band */}
+    <circle cx="12" cy="14" r="7.5" fill="none" stroke="#1E90FF" />
+
+    {/* Prominent Diamond on top */}
+    <path d="M9 3h6l-3 4h-0.1L9 3z" 
+      fill="#1E90FF" stroke="#1E90FF" strokeWidth="1.5"/>
+  </svg>
+),
+
 
   stats: (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"

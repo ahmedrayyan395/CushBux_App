@@ -239,9 +239,20 @@ const CampaignTaskItem: React.FC<{
     }
   };
 
-  // SIMPLE REWARD CALCULATION - Use direct reward field or fixed value
+  // UPDATED REWARD CALCULATION - Game and Social tasks get 5000 coins, Partner tasks get 5000 per level
   const calculateReward = () => {
-    // Try to get reward from different possible fields
+    // For GAME and SOCIAL tasks: fixed 5000 coins
+    if (task.category === 'GAME' || task.category === 'SOCIAL') {
+      return 5000;
+    }
+    
+    // For PARTNER tasks: 5000 coins per level
+    if (task.category === 'PARTNER') {
+      const level = task.level || 1; // Default to level 1 if not specified
+      return 5000 * level;
+    }
+    
+    // For other task types, try to get reward from different possible fields
     const possibleRewardFields = [
       task.reward,
       task.cost,
@@ -257,16 +268,8 @@ const CampaignTaskItem: React.FC<{
       }
     }
     
-    // Fallback rewards based on category
-    if (task.category === 'GAME') {
-      return 1000; // Default game task reward
-    } else if (task.category === 'SOCIAL') {
-      return 500; // Default social task reward
-    } else if (task.category === 'PARTNER') {
-      return 800; // Default partner task reward
-    } else {
-      return 500; // Default reward
-    }
+    // Fallback reward for other categories
+    return 500;
   };
 
   const reward = calculateReward();
@@ -284,6 +287,9 @@ const CampaignTaskItem: React.FC<{
             <h3 className="font-semibold text-white truncate text-lg" title={task.title}>{task.title}</h3>
             <p className="text-slate-400 text-sm mt-1">{description}</p>
             <p className="text-green-400 font-semibold mt-2">+{reward.toLocaleString()} Coins</p>
+            {task.category === 'PARTNER' && task.level && (
+              <p className="text-blue-400 text-xs mt-1">Level {task.level} Partner Task</p>
+            )}
           </div>
         </div>
         <button
@@ -423,33 +429,120 @@ const ProgressIndicator: React.FC<{ completed: number; total: number }> = ({ com
 
 
 
+
+
+import { fetchTaskByBlockId, completeAdsGramTask } from '../services/api';
+
+
 type TaskProps = {
+  key:number
   debug?: boolean;
   blockId: string;
+  userId: string;
+  onTaskComplete: (reward: number) => void;
 };
 
-const Task = ({ debug, blockId }: TaskProps) => {
+const Task = ({key, debug, blockId, userId, onTaskComplete }: TaskProps) => {
   const taskRef = useRef<JSX.IntrinsicElements["adsgram-task"]>(null);
+  const [taskData, setTaskData] = useState<DailyTask | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch the daily task that has this specific adsgram_block_id
+  useEffect(() => {
+    const fetchTaskData = async () => {
+      if (!blockId || !userId) return;
+      
+      setLoading(true);
+      setError(null);
+      try {
+        const task = await fetchTaskByBlockId(blockId, userId);
+        if (task) {
+          setTaskData(task);
+        } else {
+          setError('Task not available or already completed');
+        }
+      } catch (error) {
+        console.error('Error fetching task by block ID:', error);
+        setError('Failed to load task');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTaskData();
+  }, [blockId, userId]);
 
   useEffect(() => {
-    const handler = (event: CustomEvent) => {
-      // event.detail contains your block id
-      alert(`reward, detail = ${event.detail}`);
+    const handleReward = async (event: CustomEvent) => {
+      try {
+        // When AdsGram sends reward event, complete the task
+        const result = await completeAdsGramTask(userId, blockId);
+        
+        if (result.success && result.user) {
+          // Call the callback to update user coins
+          onTaskComplete(result.reward);
+          
+          if (result.reward) {
+            alert(`AdsGram task completed! You earned ${result.reward} coins`);
+          }
+        } else {
+          alert(result.message || "Failed to complete AdsGram task");
+        }
+      } catch (error) {
+        console.error("Error completing AdsGram task:", error);
+        alert("Failed to complete AdsGram task");
+      }
     };
-    const task = taskRef.current;
 
-    if (task) {
-      task.addEventListener("reward", handler as EventListener);
+    const handleDone = async (event: CustomEvent) => {
+      try {
+        // When button converts to "done", complete the task
+        const result = await completeAdsGramTask(userId, blockId);
+        
+        if (result.success && result.user) {
+          // Call the callback to update user coins
+          onTaskComplete(result.reward);
+          
+          if (result.reward) {
+            alert(`AdsGram task completed! You earned ${result.reward} coins`);
+          }
+        } else {
+          alert(result.message || "Failed to complete AdsGram task");
+        }
+      } catch (error) {
+        console.error("Error completing AdsGram task:", error);
+        alert("Failed to complete AdsGram task");
+      }
+    };
+
+    const currentTask = taskRef.current;
+    if (currentTask && taskData) { // Only add listeners if task is available
+      currentTask.addEventListener("reward", handleReward as EventListener);
+      currentTask.addEventListener("done", handleDone as EventListener);
     }
 
     return () => {
-      if (task) {
-        task.removeEventListener("reward", handler as EventListener);
+      if (currentTask) {
+        currentTask.removeEventListener("reward", handleReward as EventListener);
+        currentTask.removeEventListener("done", handleDone as EventListener);
       }
     };
-  }, []);
+  }, [blockId, userId, onTaskComplete, taskData]);
 
   if (!customElements.get("adsgram-task")) {
+    return null;
+  }
+
+  if (loading) {
+    return <div>Loading task...</div>;
+  }
+
+  if (error) {
+    return <div className="text-red-400">{error}</div>;
+  }
+
+  if (!taskData) {
     return null;
   }
 
@@ -498,7 +591,7 @@ const Task = ({ debug, blockId }: TaskProps) => {
         ref={taskRef}
       >
         <span slot="reward" className="reward">
-          1000 coins
+          {taskData.reward} coins
         </span>
         <div slot="button" className="button">
           go
@@ -516,9 +609,7 @@ const Task = ({ debug, blockId }: TaskProps) => {
 
 
 
-
-
-
+// ---------------- Main Earnings Page ----------------
 // ---------------- Main Earnings Page ----------------
 // ---------------- Main Earnings Page ----------------
 const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({ setUser, user }) => {
@@ -529,6 +620,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   const [loadingTasks, setLoadingTasks] = useState<Set<number>>(new Set());
   const [loadingDailyTasks, setLoadingDailyTasks] = useState<Set<number>>(new Set());
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+  const [availableAdsGramTasks, setAvailableAdsGramTasks] = useState<DailyTask[]>([]);
 
   useEffect(() => {
     loadAllData();
@@ -567,6 +659,31 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   const adsgramTasks = dailyTasks.filter(task => 
     (task as any).adsgram_block_id && (task as any).adsgram_block_id.startsWith('task-')
   );
+
+  // Filter available AdsGram tasks (not completed by user)
+  useEffect(() => {
+    const filterAvailableAdsGramTasks = async () => {
+      const availableTasks = [];
+      
+      for (const task of adsgramTasks) {
+        try {
+          const taskData = await fetchTaskByBlockId((task as any).adsgram_block_id, user.id);
+          if (taskData) {
+            availableTasks.push(task);
+          }
+        } catch (error) {
+          // Task not available (already completed or not found)
+          console.log(`Task ${task.id} not available:`, error);
+        }
+      }
+      
+      setAvailableAdsGramTasks(availableTasks);
+    };
+
+    if (adsgramTasks.length > 0) {
+      filterAvailableAdsGramTasks();
+    }
+  }, [adsgramTasks, user.id]);
 
   // Rest of your existing functions remain exactly the same...
   const showAdIfAvailable = async (): Promise<boolean> => {
@@ -864,30 +981,46 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
             onShowMore={partnerTasks.length > 5 ? () => loadMoreCampaigns('PARTNER') : undefined}
           />
 
-          {/* Simple AdsGram Tasks Section - Just loop through and render Task components */}
-          {adsgramTasks.length > 0 && (
-            <section className="mb-8">
-              <SectionHeader
-                title="AdsGram Tasks"
-                icon={ICONS.checkIn}
-                taskCount={adsgramTasks.length}
-              />
-              <div className="space-y-4">
-                {adsgramTasks.map((task) => (
+          {/* AdsGram Tasks Section with proper not found handling */}
+          <section className="mb-8">
+            <SectionHeader
+              title="Ads Tasks"
+              icon={ICONS.checkIn}
+              taskCount={availableAdsGramTasks.length}
+            />
+            <div className="space-y-4">
+              {availableAdsGramTasks.length > 0 ? (
+                availableAdsGramTasks.map((task) => (
                   <Task 
-                    // key={task.id}
+                    key={task.id}
                     debug={false} 
-                    blockId={(task as any).adsgram_block_id} 
+                    blockId={(task as any).adsgram_block_id}
+                    userId={user.id}
+                    onTaskComplete={(reward) => {
+                      // Refresh user data to show updated coins
+                      loadAllData();
+                    }}
                   />
-                ))}
-              </div>
-            </section>
-          )}
+                ))
+              ) : (
+                <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl text-center border border-slate-700/50 backdrop-blur-sm">
+                  <div className="w-16 h-16 mx-auto mb-4 text-slate-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-300 mb-2">No AdsGram tasks available</h3>
+                  <p className="text-slate-500">Check back later for new video tasks</p>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>
   );
 };
-
 
 export default EarningsPage;

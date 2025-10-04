@@ -265,6 +265,7 @@ const AddPartnerTaskFormComponent: React.FC<{
     return (
         <div className="space-y-6">
             {/* Link input */}
+             <PartnerInstructions />
             <section className="space-y-2">
                 <label htmlFor="task-link" className="text-base font-semibold text-slate-300">Link to your game/bot</label>
                 <input
@@ -302,7 +303,7 @@ const AddPartnerTaskFormComponent: React.FC<{
             </section>
 
             {/* Webhook Instructions */}
-            <PartnerInstructions />
+           
 
             {/* Language Selection - Positioned at the bottom */}
             <LanguageSelector 

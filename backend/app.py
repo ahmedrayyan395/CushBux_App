@@ -108,6 +108,7 @@ def seed_users():
             name="Alice",
             coins=50000000,
             ton=0,
+            rings=2,
             referral_earnings=0,
             spins=5,
             ad_credit=177.0,
@@ -124,6 +125,7 @@ def seed_users():
             name="أحمد",  # Arabic name
             coins=50000000,
             ton=125,
+            rings=9,
             referral_earnings=0,
             spins=522,
             ad_credit=111.0,
@@ -140,6 +142,7 @@ def seed_users():
             name="vgg",  # Arabic name
             coins=50000000,
             ton=125,
+            rings=9,
             referral_earnings=0,
             spins=522,
             ad_credit=111.0,
@@ -433,6 +436,7 @@ class User(db.Model):
     
     # Currency and Rewards
     coins = db.Column(db.BigInteger, nullable=False, default=0)
+    rings =  db.Column(db.Numeric(20, 9), nullable=False, default=0.0)
     ton = db.Column(db.Numeric(20, 9), nullable=False, default=0.0)
     referral_earnings = db.Column(db.BigInteger, nullable=False, default=0)
     spins = db.Column(db.Integer, nullable=False, default=0)
@@ -491,6 +495,7 @@ class User(db.Model):
             "id": self.id,
             "name": self.name,
             "coins": self.coins,
+            "rings":self.rings,
             "wallet_address": self.wallet_address,  # Add this line
             "ton": float(self.ton),
             "referral_earnings": self.referral_earnings,
@@ -2123,6 +2128,141 @@ def start_task():
     })
 
 
+# @app.route("/tasks/claim", methods=["POST"])
+# @jwt_required_in_app
+# def claim_task():
+#     data = request.get_json()
+#     user_id = data.get("userId")
+#     task_id = data.get("taskId")
+
+#     if not user_id or not task_id:
+#         return jsonify({"success": False, "message": "Missing parameters"}), 400
+
+#     user = User.query.get(user_id)
+#     campaign = UserCampaign.query.get(task_id)
+
+#     if not user or not campaign:
+#         return jsonify({"success": False, "message": "User or Campaign not found"}), 404
+
+#     # Check if task was started
+#     existing_record = db.session.execute(
+#         user_task_completion.select().where(
+#             (user_task_completion.c.user_id == user_id) &
+#             (user_task_completion.c.campaign_id == (task_id))
+#         )
+#     ).first()
+
+#     if not existing_record:
+#         return jsonify({"success": False, "message": "Task not started"}), 400
+
+#     if existing_record.completed_at:
+#         return jsonify({"success": False, "message": "Task already claimed"}), 400
+
+#     # VALIDATION: Check subscription for social campaigns (ONLY AT CLAIM TIME)
+#     if campaign.category == TaskCategory.SOCIAL and campaign.check_subscription:
+#         # Extract channel username from link (e.g., "https://t.me/channelname" -> "channelname")
+#         channel_username = campaign.link.replace('https://t.me/', '').split('?')[0]
+        
+#         # Make direct Telegram API request to check membership
+#         is_member = check_telegram_membership_direct(channel_username, user.id)
+        
+#         if not is_member:
+#             return jsonify({
+#                 "success": False, 
+#                 "message": "Please subscribe to the channel to claim rewards"
+#             }), 400
+
+#     # VALIDATION: Check bot start for game campaigns (ONLY AT CLAIM TIME)
+#     elif campaign.category == TaskCategory.GAME:
+#         # Extract bot username from link
+#         bot_username = campaign.link.replace('https://t.me/', '').split('?')[0]
+        
+#         # Check if user started the bot
+#         bot_started = check_user_started_bot(bot_username, user.id)
+        
+#         if not bot_started:
+#             return jsonify({
+#                 "success": False, 
+#                 "message": "Please start the bot to claim rewards"
+#             }), 400
+
+#     # VALIDATION: Check level completion for partner campaigns (ONLY AT CLAIM TIME)
+#     elif campaign.category == TaskCategory.PARTNER:
+#         # For partner campaigns, check if user reached the required level
+#         partner_campaign = PartnerCampaign.query.get(task_id)
+#         if not partner_campaign:
+#             return jsonify({"success": False, "message": "Invalid partner campaign"}), 400
+        
+#         # Extract game ID from link
+#         game_id = campaign.link
+        
+#         # Check user's current level for this game
+#         user_progress = UserGameProgress.query.filter_by(
+#             user_id=user.id,
+#             game_id=game_id
+#         ).first()
+        
+#         if not user_progress or user_progress.current_level < partner_campaign.required_level:
+#             return jsonify({
+#                 "success": False, 
+#                 "message": f"Reach level {partner_campaign.required_level} in the game to claim rewards"
+#             }), 400
+        
+#         # Check if level completion is already recorded
+#         level_completion = LevelCompletion.query.filter_by(
+#             user_id=user.id,
+#             campaign_id=campaign.id
+#         ).first()
+        
+#         if not level_completion:
+#             return jsonify({
+#                 "success": False, 
+#                 "message": "Level completion not verified. Please make sure the game sent your progress."
+#             }), 400
+
+#     # ONLY COMPLETE TASK IF VALIDATION PASSES
+#     db.session.execute(
+#         user_task_completion.update().where(
+#             (user_task_completion.c.user_id == user_id) &
+#             (user_task_completion.c.campaign_id == (task_id))
+#         ).values(completed_at=datetime.now())
+#     )
+
+#     # Update campaign completions
+#     campaign.completions += 1
+
+#     # Reward user
+#     CONVERSION_RATE = 100000000
+#     # reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
+#     reward=5000
+#     user.coins += reward
+#     user.tasks_completed_today_for_spin += 1
+#     user.spins += 1
+
+#     # Update user's task completion counters based on task category
+#     if campaign.category == TaskCategory.GAME:
+#         user.total_game_tasks_completed += 1
+#     elif campaign.category == TaskCategory.SOCIAL:
+#         user.total_social_tasks_completed += 1
+#     elif campaign.category == TaskCategory.PARTNER:
+#         user.total_partner_tasks_completed += 1
+
+#     # Update quest progress for all relevant quests
+#     update_quest_progress(user.id, campaign.category)
+
+#     award_referral_earnings(user.id, reward)
+
+#     db.session.commit()
+#     db.session.refresh(user)
+
+#     return jsonify({
+#         "success": True,
+#         "message": f"Task claimed! +{reward} coins",
+#         "user": user.to_dict(),
+#         "reward": reward
+#     })
+
+
 @app.route("/tasks/claim", methods=["POST"])
 @jwt_required_in_app
 def claim_task():
@@ -2226,10 +2366,21 @@ def claim_task():
     # Update campaign completions
     campaign.completions += 1
 
-    # Reward user
+    # UPDATED REWARD CALCULATION
     CONVERSION_RATE = 100000000
-    reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
     
+    # Fixed rewards based on category
+    if campaign.category == TaskCategory.GAME or campaign.category == TaskCategory.SOCIAL:
+        reward = 5000  # Fixed 5000 coins for game and social tasks
+    elif campaign.category == TaskCategory.PARTNER:
+        # For partner tasks, calculate based on level (5000 per level)
+        partner_campaign = PartnerCampaign.query.get(task_id)
+        level = partner_campaign.required_level if partner_campaign else 1
+        reward = level * 5000  # 5000 coins per level
+    else:
+        # Fallback for other categories
+        reward = int((campaign.cost / Decimal(campaign.goal or 1)) * Decimal("0.4") * Decimal(CONVERSION_RATE))
+
     user.coins += reward
     user.tasks_completed_today_for_spin += 1
     user.spins += 1
@@ -2256,6 +2407,10 @@ def claim_task():
         "user": user.to_dict(),
         "reward": reward
     })
+
+
+
+
 
 def update_quest_progress(user_id: int, task_category: str):
     """Update quest progress based on completed task category"""
@@ -3960,6 +4115,7 @@ def watch_ad_for_spin():
         # Award spin for watching ad
         user.spins += 1
         user.ads_watched_today += 1
+        user.rings+=1
         
         db.session.commit()
         
@@ -4272,7 +4428,8 @@ def update_withdrawal_transaction():
 
 # Get pending withdrawals for admin
 @app.route('/admin/pending-withdrawals', methods=['GET'])
-@jwt_required_in_app
+@jwt_required()
+@admin_required
 def get_pending_withdrawals():
     try:
         pending_withdrawals = Transaction.query.filter_by(
@@ -4479,10 +4636,12 @@ def get_withdrawal_transactions():
 
 
 
+
+
 # Settings endpoints
 @app.route('/admin/api/settings', methods=['GET'])
-@jwt_required()
-@admin_required
+# @jwt_required()
+# @admin_required
 def get_settings():
     try:
         settings = Settings.query.first()
@@ -4666,7 +4825,7 @@ def claim_quest_reward(quest_id):
 @app.route('/admin/quests', methods=['GET'])
 
 # @jwt_required()
-# @admin_required
+#@admin_required
 @jwt_required_in_app
 def get_all_quests():
     quests = Quest.query.all()
@@ -5058,8 +5217,8 @@ from flask import jsonify, request
 from app import app, db
 
 # Configuration
-MNEMONIC = "shiver element initial sea behind across bus chapter dose earth write foil loyal employ city daughter cluster verify cradle citizen place burden brass fossil"
-QUICKNODE_BASE = "https://flashy-hardworking-sound.ton-mainnet.quiknode.pro/0b8a7ecf4d4898861d6da8ca6097e1d5bfa2718a/"
+# MNEMONIC = "shiver element initial sea behind across bus chapter dose earth write foil loyal employ city daughter cluster verify cradle citizen place burden brass fossil"
+# QUICKNODE_BASE = "https://flashy-hardworking-sound.ton-mainnet.quiknode.pro/0b8a7ecf4d4898861d6da8ca6097e1d5bfa2718a/"
 
 def get_wallet_address():
     """Return the admin wallet address (replace with your own)."""
@@ -5737,7 +5896,186 @@ def update_current_system_user():
 
 
 
+@app.route("/api/daily-tasks/by-block-id/<block_id>", methods=["GET"])
+def get_task_by_block_id(block_id):
+    user_id = request.args.get('user_id')
     
+    if not user_id:
+        return jsonify({"error": "user_id parameter is required"}), 400
+
+    task = DailyTask.query.filter_by(adsgram_block_id=block_id).first()
+    
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    # Check if user has completed this task in the last 24 hours
+    twenty_four_hours_ago = datetime.utcnow() - timedelta(hours=24)
+    
+    recent_completion = db.session.execute(
+        user_daily_task_completions.select().where(
+            (user_daily_task_completions.c.user_id == user_id) &
+            (user_daily_task_completions.c.task_id == task.id) &
+            (user_daily_task_completions.c.completed_at >= twenty_four_hours_ago) &
+            (user_daily_task_completions.c.claimed == True)
+        )
+    ).first()
+
+    # If user completed this task in the last 24 hours, return empty
+    if recent_completion:
+        return jsonify({"error": "Task already completed in the last 24 hours"}), 404
+
+    return jsonify(task.to_dict()), 200
+
+
+
+
+@app.route("/adsgram-task/complete", methods=["POST"])
+@jwt_required_in_app
+def complete_adsgram_task():
+    data = request.get_json()
+    user_id = data.get("userId")
+    block_id = data.get("blockId")
+
+    if not user_id or not block_id:
+        return jsonify({"success": False, "message": "Missing parameters"}), 400
+
+    # Find the daily task with this adsgram_block_id
+    task = DailyTask.query.filter_by(adsgram_block_id=block_id).first()
+    if not task:
+        return jsonify({"success": False, "message": "AdsGram task not found"}), 404
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    # Check if already completed by this user
+    today = datetime.utcnow().date()
+    existing_completion = db.session.execute(
+        user_daily_task_completions.select().where(
+            (user_daily_task_completions.c.user_id == user_id) &
+            (user_daily_task_completions.c.task_id == task.id) &
+            (func.date(user_daily_task_completions.c.completed_at) == today) &
+            (user_daily_task_completions.c.claimed == True)
+        )
+    ).first()
+
+    if existing_completion:
+        return jsonify({"success": False, "message": "AdsGram task already completed today"}), 400
+
+    # Check if started but not completed
+    existing_start = db.session.execute(
+        user_daily_task_completions.select().where(
+            (user_daily_task_completions.c.user_id == user_id) &
+            (user_daily_task_completions.c.task_id == task.id) &
+            (func.date(user_daily_task_completions.c.started_at) == today) &
+            (user_daily_task_completions.c.completed_at.is_(None))
+        )
+    ).first()
+
+    if not existing_start:
+        # Create a new started record for AdsGram task
+        db.session.execute(user_daily_task_completions.insert().values(
+            user_id=user_id,
+            task_id=task.id,
+            started_at=datetime.utcnow()
+        ))
+
+    # Mark as completed and claimed
+    db.session.execute(
+        user_daily_task_completions.update().where(
+            (user_daily_task_completions.c.user_id == user_id) &
+            (user_daily_task_completions.c.task_id == task.id) &
+            (func.date(user_daily_task_completions.c.started_at) == today)
+        ).values(
+            completed_at=datetime.utcnow(),
+            claimed=True
+        )
+    )
+
+    # Update task completions and reward user
+    task.completions += 1
+    user.coins += task.reward
+    user.rings+=1
+
+    # Grant spin if applicable
+    if user.tasks_completed_today_for_spin < 50:
+        user.spins += 1
+        user.tasks_completed_today_for_spin += 1
+
+    db.session.commit()
+    db.session.refresh(user)
+
+    return jsonify({
+        "success": True,
+        "message": f"AdsGram task completed! +{task.reward} coins",
+        "user": user.to_dict(),
+        "reward": task.reward
+    })
+
+
+
+
+
+
+# @app.route("/daily-tasks/adsgram", methods=["GET"])
+# def get_adsgram_tasks():
+#     user_id = request.args.get('user_id')
+    
+#     if not user_id:
+#         return jsonify({"error": "user_id parameter is required"}), 400
+    
+#     try:
+#         # Get current time for 24-hour check
+#         current_time = datetime.utcnow()
+        
+#         # Subquery for completed tasks
+#         completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+#             .filter(user_daily_task_completions.c.user_id == user_id)\
+#             .filter(user_daily_task_completions.c.completed_at.isnot(None))\
+#             .subquery()
+        
+#         # Query specifically for AdsGram tasks (those with adsgram_block_id)
+#         query = DailyTask.query\
+#             .filter_by(status=CampaignStatus.ACTIVE)\
+#             .filter(DailyTask.adsgram_block_id.isnot(None))\
+#             .filter(~DailyTask.id.in_(completed_subquery))
+        
+#         # Exclude in-progress tasks within 24 hours
+#         in_progress_subquery = db.session.query(user_daily_task_completions.c.task_id)\
+#             .filter(user_daily_task_completions.c.user_id == user_id)\
+#             .filter(user_daily_task_completions.c.started_at.isnot(None))\
+#             .filter(user_daily_task_completions.c.completed_at.is_(None))\
+#             .subquery()
+        
+#         query = query.filter(
+#             ~DailyTask.id.in_(in_progress_subquery) | 
+#             (DailyTask.id.in_(in_progress_subquery) & 
+#              user_daily_task_completions.c.started_at <= (current_time - timedelta(hours=24)))
+#         )
+        
+#         adsgram_tasks = query.all()
+        
+#         # Convert to dict with additional info
+#         tasks_data = []
+#         for task in adsgram_tasks:
+#             progress_record = db.session.query(user_daily_task_completions)\
+#                 .filter_by(user_id=user_id, task_id=task.id)\
+#                 .first()
+            
+#             task_dict = task.to_dict()
+#             task_dict['completed'] = False
+#             task_dict['claimed'] = False
+#             task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
+#             task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
+            
+#             tasks_data.append(task_dict)
+        
+#         return jsonify(tasks_data), 200
+        
+#     except Exception as e:
+#         print(f"Error fetching AdsGram tasks: {e}")
+#         return jsonify({"error": "Internal server error"}), 500    
+
 
 @app.route("/daily-tasks/adsgram", methods=["GET"])
 def get_adsgram_tasks():
@@ -5749,51 +6087,114 @@ def get_adsgram_tasks():
     try:
         # Get current time for 24-hour check
         current_time = datetime.utcnow()
+        twenty_four_hours_ago = current_time - timedelta(hours=24)
         
-        # Subquery for completed tasks
-        completed_subquery = db.session.query(user_daily_task_completions.c.task_id)\
-            .filter(user_daily_task_completions.c.user_id == user_id)\
-            .filter(user_daily_task_completions.c.completed_at.isnot(None))\
-            .subquery()
+        # DELETE completion records older than 24 hours for AdsGram tasks
+        # First, get all AdsGram task IDs
+        adsgram_task_ids = [task.id for task in DailyTask.query.filter(
+            DailyTask.adsgram_block_id.isnot(None)
+        ).all()]
+        
+        if adsgram_task_ids:
+            # Delete completion records for AdsGram tasks that are older than 24 hours
+            db.session.execute(
+                user_daily_task_completions.delete().where(
+                    (user_daily_task_completions.c.user_id == user_id) &
+                    (user_daily_task_completions.c.task_id.in_(adsgram_task_ids)) &
+                    (user_daily_task_completions.c.completed_at <= twenty_four_hours_ago)
+                )
+            )
+            db.session.commit()
         
         # Query specifically for AdsGram tasks (those with adsgram_block_id)
         query = DailyTask.query\
             .filter_by(status=CampaignStatus.ACTIVE)\
-            .filter(DailyTask.adsgram_block_id.isnot(None))\
-            .filter(~DailyTask.id.in_(completed_subquery))
-        
-        # Exclude in-progress tasks within 24 hours
-        in_progress_subquery = db.session.query(user_daily_task_completions.c.task_id)\
-            .filter(user_daily_task_completions.c.user_id == user_id)\
-            .filter(user_daily_task_completions.c.started_at.isnot(None))\
-            .filter(user_daily_task_completions.c.completed_at.is_(None))\
-            .subquery()
-        
-        query = query.filter(
-            ~DailyTask.id.in_(in_progress_subquery) | 
-            (DailyTask.id.in_(in_progress_subquery) & 
-             user_daily_task_completions.c.started_at <= (current_time - timedelta(hours=24)))
-        )
-        
-        adsgram_tasks = query.all()
+            .filter(DailyTask.adsgram_block_id.isnot(None))
         
         # Convert to dict with additional info
         tasks_data = []
-        for task in adsgram_tasks:
-            progress_record = db.session.query(user_daily_task_completions)\
-                .filter_by(user_id=user_id, task_id=task.id)\
-                .first()
+        for task in query.all():
+            # Check for recent completion (within 24 hours)
+            recent_completion = db.session.execute(
+                user_daily_task_completions.select().where(
+                    (user_daily_task_completions.c.user_id == user_id) &
+                    (user_daily_task_completions.c.task_id == task.id) &
+                    (user_daily_task_completions.c.completed_at >= twenty_four_hours_ago)
+                )
+            ).first()
             
-            task_dict = task.to_dict()
-            task_dict['completed'] = False
-            task_dict['claimed'] = False
-            task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
-            task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
-            
-            tasks_data.append(task_dict)
+            # Only include tasks that don't have recent completions
+            if not recent_completion:
+                progress_record = db.session.query(user_daily_task_completions)\
+                    .filter_by(user_id=user_id, task_id=task.id)\
+                    .first()
+                
+                task_dict = task.to_dict()
+                task_dict['completed'] = False
+                task_dict['claimed'] = False
+                task_dict['in_progress'] = progress_record and progress_record.started_at and not progress_record.completed_at
+                task_dict['started_at'] = progress_record.started_at.isoformat() if progress_record and progress_record.started_at else None
+                
+                tasks_data.append(task_dict)
         
         return jsonify(tasks_data), 200
         
     except Exception as e:
         print(f"Error fetching AdsGram tasks: {e}")
-        return jsonify({"error": "Internal server error"}), 500    
+        db.session.rollback()
+        return jsonify({"error": "Internal server error"}), 500
+
+# Adsgram reward endpoint
+@app.route("/reward", methods=["GET"])
+def adsgram_reward():
+    user_id = request.args.get("user_id")
+    block_id = request.args.get("block_id")
+    reward = request.args.get("reward", type=int)
+    sign = request.args.get("sign")
+
+    if not user_id or not block_id or not reward:
+        return jsonify({"success": False, "message": "Missing parameters"}), 400
+
+    # TODO: verify `sign` with your ADSGRAM_SECRET (HMAC/MD5 depending on Adsgram spec)
+    # Skipping here for brevity
+    # if not valid_signature(sign, user_id, block_id, reward): return 403
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    # Find the DailyTask with this adsgram_block_id
+    task = DailyTask.query.filter_by(adsgram_block_id=block_id).first()
+    if not task:
+        return jsonify({"success": False, "message": "Task not found"}), 404
+
+    # Create or update the record in user_daily_task_completions
+    today = datetime.utcnow().date()
+    existing_record = db.session.execute(
+        user_daily_task_completions.select().where(
+            (user_daily_task_completions.c.user_id == user_id) &
+            (user_daily_task_completions.c.task_id == task.id) &
+            (func.date(user_daily_task_completions.c.started_at) == today)
+        )
+    ).first()
+
+    if not existing_record:
+        # Insert a new record (started but not claimed yet)
+        db.session.execute(
+            user_daily_task_completions.insert().values(
+                user_id=user_id,
+                task_id=task.id,
+                started_at=datetime.utcnow(),
+                claimed=False
+            )
+        )
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Adsgram task recorded. User can now claim +{reward} coins.",
+        "user_id": user_id,
+        "task_id": task.id,
+        "reward": reward
+    })

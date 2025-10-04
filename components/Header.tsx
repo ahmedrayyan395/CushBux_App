@@ -10,17 +10,29 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ user }) => {
   const navigate = useNavigate();
 
-  const formatNumber = (num: number): string => {
-    if (num > 0 && num < 0.001) {
-      return '<0.001';
-    } else if (num < 1) {
-      return num.toFixed(3);
-    } else if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
-    } else if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'k';
+  const formatNumber = (num: any): string => {
+    // Convert to number first to handle string inputs
+    const numberValue = Number(num);
+    
+    if (isNaN(numberValue)) {
+      return '0';
     }
-    return num.toLocaleString('en-US');
+    
+    if (numberValue > 0 && numberValue < 0.001) {
+      return '<0.001';
+    } else if (numberValue < 1) {
+      return numberValue.toFixed(3);
+    } else if (numberValue >= 1000000) {
+      return (numberValue / 1000000).toFixed(1) + 'M';
+    } else if (numberValue >= 1000) {
+      return (numberValue / 1000).toFixed(1) + 'k';
+    }
+    // For whole numbers, show without decimals
+    if (Number.isInteger(numberValue)) {
+      return numberValue.toLocaleString('en-US');
+    }
+    // For numbers with decimals but less than 1000, show with up to 2 decimal places
+    return numberValue.toFixed(2).replace(/\.?0+$/, '');
   };
 
   return (
@@ -28,22 +40,26 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
       <div className="flex justify-between items-center">
         {/* Compact Balance Section */}
         <div className="flex items-center">
-          <div className="bg-slate-800 p-2 rounded-lg flex items-center space-x-3 border border-slate-700/50">
+          <div className="bg-slate-800 p-2 rounded-lg flex items-center space-x-2 border border-slate-700/50">
+            {/* Coins */}
             <div className="flex items-center space-x-1">
-              <div className="w-4 h-4 text-yellow-400">
+              <span className="inline-flex items-center justify-center w-4 h-4 text-yellow-400 flex-shrink-0">
                 {ICONS.coin}
-              </div>
-              <span className="font-bold text-white text-sm min-w-[45px] text-right">
+              </span>
+              <span className="font-bold text-white text-sm min-w-[40px] text-right tabular-nums">
                 {user?.coins != null ? formatNumber(user.coins) : '0'}
               </span>
             </div>
+
             <div className="w-px h-4 bg-slate-600"></div>
+
+            {/* Rings - Optimized for small numbers */}
             <div className="flex items-center space-x-1">
-              <div className="w-4 h-4 text-blue-400">
-                {ICONS.ton}
-              </div>
-              <span className="font-bold text-white text-sm min-w-[50px] text-right font-mono">
-                {user?.ton != null ? formatNumber(user.ad_credit) : '0'}
+              <span className="inline-flex items-center justify-center w-4 h-4 text-blue-400 flex-shrink-0">
+                {ICONS.ring}
+              </span>
+              <span className="font-bold text-white text-sm min-w-[35px] text-right tabular-nums">
+                {user?.rings != null ? formatNumber(user.rings) : '0'}
               </span>
             </div>
           </div>

@@ -300,25 +300,45 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
     loadTransactions();
   }, [loadTransactions]);
 
-  const validateWithdrawalAmount = (amount: number): { isValid: boolean; message: string } => {
-    if (isNaN(amount) || amount <= 0) {
-      return { isValid: false, message: "Please enter a valid amount" };
-    }
+ // Add rings conversion constant at the top with other constants
+const TON_TO_RINGS = 10000; // 1 TON = 10,000 rings
 
-    if (amount < minWithdrawal) {
-      return { isValid: false, message: `Minimum withdrawal is ${minWithdrawal} TON` };
-    }
+// Update the validateWithdrawalAmount function to include rings check
+const validateWithdrawalAmount = (amount: number): { isValid: boolean; message: string } => {
+  if (isNaN(amount) || amount <= 0) {
+    return { isValid: false, message: "Please enter a valid amount" };
+  }
 
-    if (amount > availableTonBalance) {
-      return { 
-        isValid: false, 
-        message: `Insufficient coins balance. You need ${(amount * CONVERSION_RATE).toFixed(0)} coins for ${amount} TON` 
-      };
-    }
+  if (amount < minWithdrawal) {
+    return { isValid: false, message: `Minimum withdrawal is ${minWithdrawal} TON` };
+  }
 
-    return { isValid: true, message: "" };
-  };
+  // Calculate required rings for this withdrawal
+  const requiredRings = amount * TON_TO_RINGS;
+  const userRings = user?.rings ? Number(user.rings) : 0;
 
+  // Check if user has enough rings
+  if (requiredRings > userRings) {
+    return { 
+      isValid: false, 
+      message: `Insufficient rings! You need ${requiredRings.toFixed(0)} rings to withdraw ${amount} TON. You have ${userRings} rings.` 
+    };
+  }
+
+  if (amount > availableTonBalance) {
+    return { 
+      isValid: false, 
+      message: `Insufficient coins balance. You need ${(amount * CONVERSION_RATE).toFixed(0)} coins for ${amount} TON` 
+    };
+  }
+
+  return { isValid: true, message: "" };
+};
+
+
+
+
+  
   const handleConnectWallet = async () => {
     setIsConnecting(true);
     
@@ -534,23 +554,34 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
         
         {/* Available TON Balance from Coins */}
        <div className="text-center mb-4">
-          <p className="text-green-400 font-semibold text-base">
-             {availableCoinsBalance.toLocaleString()} Coins
-          </p>
-          <p className="text-3xl font-bold text-white my-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
-           ≈ {availableTonBalance.toFixed(6)} TON
-          </p>
-          <p className="text-slate-300 text-sm mb-1">Available TON Balance (from Coins)</p>
-        </div>
+  <p className="text-green-400 font-semibold text-base">
+    {availableCoinsBalance.toLocaleString()} Coins
+  </p>
+  {/* <p className="text-blue-400 font-semibold text-base mt-2">
+    {user?.rings ? Number(user.rings).toLocaleString() : 0} Rings
+  </p> */}
+  <p className="text-3xl font-bold text-white my-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+    ≈ {availableTonBalance.toFixed(6)} TON
+  </p>
+  <p className="text-slate-300 text-sm mb-1">Available TON Balance (from Coins)</p>
+</div>
 
        
 
         {/* Conversion Info */}
-        <div className="text-center mt-4 p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
-          <p className="text-blue-400 font-semibold text-sm">
-            💱 Conversion rate: 1 TON = {CONVERSION_RATE.toLocaleString()} Coins
-          </p>
-        </div>
+    <div className="text-center mt-4 p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
+  <div className="text-center space-y-1">
+    <p className="text-blue-400 text-sm">
+      💱 1 TON = {CONVERSION_RATE.toLocaleString()} Coins
+    </p>
+    <p className="text-green-400 text-sm">
+      💍 1 TON requires {TON_TO_RINGS.toLocaleString()} Rings to withdraw
+    </p>
+    <p className="text-yellow-400 text-xs">
+      🎥 Get more rings by watching ads & completing tasks!
+    </p>
+  </div>
+</div>
       </div>
 
       {/* Withdrawal Section */}
@@ -590,6 +621,17 @@ const WithdrawPage: React.FC<{ user: User | null, setUser: (user: User) => void 
             </p>
           </div>
         )}
+
+        {withdrawAmount && (
+  <div className="p-3 bg-slate-700/30 rounded-xl mt-2">
+    <p className="text-slate-300 text-sm text-center">
+      Required: {(parseFloat(withdrawAmount) * TON_TO_RINGS).toLocaleString()} Rings
+    </p>
+    <p className="text-slate-400 text-xs text-center mt-1">
+      You have: {user?.rings ? Number(user.rings).toLocaleString() : 0} Rings
+    </p>
+  </div>
+)}
 
         {/* Amount Input */}
         {wallet && (
