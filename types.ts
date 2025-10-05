@@ -6,6 +6,40 @@ export interface SpaceDefenderProgress {
   speedLevel: number;
 }
 
+
+
+declare interface AdsGramShowResult {
+  done: boolean;
+  description: string;
+  state: 'load' | 'render' | 'playing' | 'destroy';
+  error: boolean;
+}
+
+declare interface AdsGramController {
+  show(): Promise<AdsGramShowResult>;
+  // Add other methods as needed
+}
+
+declare interface AdsGramStatic {
+  init(options: { blockId: string }): AdsGramController;
+}
+
+declare global {
+  interface Window {
+    Adsgram: AdsGramStatic;
+  }
+}
+
+export {};
+
+
+
+
+
+
+
+
+
 export interface StreetRacingProgress {
   currentCar: number;
   unlockedCars: number[];

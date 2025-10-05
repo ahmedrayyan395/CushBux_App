@@ -19,6 +19,44 @@ import { JSX } from "react/jsx-runtime";
 
 
 
+
+
+declare interface AdsGramShowResult {
+  done: boolean;
+  description: string;
+  state: 'load' | 'render' | 'playing' | 'destroy';
+  error: boolean;
+}
+
+declare interface AdsGramController {
+  show(): Promise<AdsGramShowResult>;
+  // Add other methods as needed
+}
+
+declare interface AdsGramStatic {
+  init(options: { blockId: string }): AdsGramController;
+}
+
+declare global {
+  interface Window {
+    Adsgram: AdsGramStatic;
+  }
+}
+
+// AdsGram SDK initialization
+let AdController: AdsGramController | undefined;
+try {
+  const adsgramWindow = window as unknown as { Adsgram?: AdsGramStatic };
+  if (adsgramWindow.Adsgram) {
+    AdController = adsgramWindow.Adsgram.init({ blockId: "int-15335" });
+  }
+} catch (error) {
+  console.error("Failed to initialize AdsGram SDK:", error);
+}
+
+// Ad provider toggle
+let adProviderToggle = false;
+
 // Declare the ad SDK function the same way as in SpinWheel page
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
@@ -112,8 +150,8 @@ const isMobileDevice = () => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 };
 
-// Improved link opening for mobile devices
-const openLink = (url: string) => {
+// Improved link opening for mobile devices with external link handling
+const openLink = (url: string, isExternalTask: boolean = false) => {
   if (!url) return;
   
   // Check if it's a deep link (telegram, whatsapp, etc.)
@@ -123,14 +161,24 @@ const openLink = (url: string) => {
                     url.startsWith('twitter:') ||
                     url.includes('//t.me/');
   
-  if (isMobileDevice() && isDeepLink) {
-    // For mobile deep links, use direct window location
-    window.location.href = url;
-  } else if (isMobileDevice()) {
-    // For regular URLs on mobile, open in same tab for better UX
-    window.open(url, '_blank', 'noopener,noreferrer');
+  // Check if it's an external affiliate link (http/https that's not our domain)
+  const isExternalLink = isExternalTask && 
+                        (url.startsWith('http://') || url.startsWith('https://')) &&
+                        !url.includes(window.location.hostname);
+  
+  if (isMobileDevice()) {
+    if (isExternalLink) {
+      // For external affiliate links on mobile, open in same tab
+      window.location.href = url;
+    } else if (isDeepLink) {
+      // For mobile deep links, use direct window location
+      window.location.href = url;
+    } else {
+      // For regular URLs on mobile, open in same tab for better UX
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   } else {
-    // For desktop, open in new tab
+    // For desktop, always open in new tab
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 };
@@ -141,10 +189,15 @@ const DailyTaskItem: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string, link?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string, isExternal?: boolean) => void;
   onClaim: (taskId: number) => void;
   buttonState: { text: string; disabled: boolean; variant: string };
 }> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
+
+  // Check if this is an external task (has affiliate link)
+  const isExternalTask = task.link && 
+                        (task.link.startsWith('http://') || task.link.startsWith('https://')) &&
+                        !task.link.includes(window.location.hostname);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -152,7 +205,14 @@ const DailyTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id, task.taskType, task.link);
+      // Show confirmation for external tasks
+      if (isExternalTask) {
+        const userConfirmed = confirm(`You will be redirected to complete this task. Make sure to complete the required action to earn your reward. Continue?`);
+        if (!userConfirmed) {
+          return; // Don't proceed if user cancels
+        }
+      }
+      onStart(task.id, task.taskType, task.link, isExternalTask);
     }
   };
 
@@ -224,10 +284,15 @@ const CampaignTaskItem: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string, link?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string, isExternal?: boolean) => void;
   onClaim: (taskId: number) => void;
   buttonState: { text: string; disabled: boolean; variant: string };
 }> = ({ task, icon, description, buttonClass, onStart, onClaim, buttonState }) => {
+
+  // Check if this is an external task (has affiliate link)
+  const isExternalTask = task.link && 
+                        (task.link.startsWith('http://') || task.link.startsWith('https://')) &&
+                        !task.link.includes(window.location.hostname);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -235,7 +300,14 @@ const CampaignTaskItem: React.FC<{
     if (buttonState.variant === 'claim') {
       onClaim(task.id);
     } else if (buttonState.variant === 'start') {
-      onStart(task.id, task.taskType, task.link);
+      // Show confirmation for external tasks
+      if (isExternalTask) {
+        const userConfirmed = confirm(`You will be redirected to complete this task. Make sure to complete the required action to earn your reward. Continue?`);
+        if (!userConfirmed) {
+          return; // Don't proceed if user cancels
+        }
+      }
+      onStart(task.id, task.taskType, task.link, isExternalTask);
     }
   };
 
@@ -345,7 +417,7 @@ const TaskSection: React.FC<{
   icon: React.ReactNode;
   description: string;
   buttonClass: string;
-  onStart: (taskId: number, taskType?: string, link?: string) => void;
+  onStart: (taskId: number, taskType?: string, link?: string, isExternal?: boolean) => void;
   onClaim: (taskId: number) => void;
   getTaskButtonState: (taskId: number) => { text: string; disabled: boolean; variant: string };
   TaskComponent?: React.ComponentType<any>;
@@ -610,8 +682,6 @@ const Task = ({key, debug, blockId, userId, onTaskComplete }: TaskProps) => {
 
 
 // ---------------- Main Earnings Page ----------------
-// ---------------- Main Earnings Page ----------------
-// ---------------- Main Earnings Page ----------------
 const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({ setUser, user }) => {
   const [campaigns, setCampaigns] = useState<UserCampaign[]>([]);
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
@@ -685,23 +755,61 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
     }
   }, [adsgramTasks, user.id]);
 
-  // Rest of your existing functions remain exactly the same...
   const showAdIfAvailable = async (): Promise<boolean> => {
-    try {
+  try {
+    // Alternate between AdsGram and show_9692552
+    if (adProviderToggle && AdController) {
+      // Use AdsGram reward ad
+      const result = await AdController.show();
+      if (result.done) {
+        console.log("AdsGram reward ad completed successfully");
+        adProviderToggle = !adProviderToggle;
+        return true;
+      } else {
+        throw new Error("AdsGram ad not completed");
+      }
+    } else {
+      // Use show_9692552
       await show_9692552();
+      console.log("show_9692552 ad completed successfully");
+      adProviderToggle = !adProviderToggle;
       return true;
-    } catch (e) {
-      console.error("Ad failed to show", e);
+    }
+  } catch (e) {
+    console.error("Ad failed to show", e);
+    
+    // Try fallback provider
+    try {
+      if (!adProviderToggle && AdController) {
+        const fallbackResult = await AdController.show();
+        if (fallbackResult.done) {
+          console.log("Fallback AdsGram ad completed");
+          adProviderToggle = !adProviderToggle;
+          return true;
+        }
+      } else {
+        await show_9692552();
+        console.log("Fallback show_9692552 completed");
+        adProviderToggle = !adProviderToggle;
+        return true;
+      }
+    } catch (fallbackError) {
+      console.error("All ad providers failed:", fallbackError);
+      
+      // Development fallback
       if (process.env.NODE_ENV === 'development') {
         console.log("Simulating ad in development");
+        adProviderToggle = !adProviderToggle;
         return true;
       }
       return false;
     }
-  };
+    return false;
+  }
+};
 
   // ---- Daily Task Logic ----
-  const handleDailyTaskStart = async (taskId: number, taskType?: string, link?: string) => {
+  const handleDailyTaskStart = async (taskId: number, taskType?: string, link?: string, isExternal?: boolean) => {
     setLoadingDailyTasks(prev => new Set(prev).add(taskId));
 
     try {
@@ -726,8 +834,8 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
         
         // REDIRECT: For non-AD tasks with links, open using mobile-friendly method
         if (link && actualTaskType !== TASK_TYPES.AD) {
-          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice());
-          openLink(link);
+          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice(), 'External:', isExternal);
+          openLink(link, isExternal || false);
         }
         
         // Auto-claim AD tasks
@@ -790,7 +898,7 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
   };
 
   // ---- Campaign Tasks ----
-  const handleTaskStart = async (taskId: number, taskType?: string, link?: string) => {
+  const handleTaskStart = async (taskId: number, taskType?: string, link?: string, isExternal?: boolean) => {
     setLoadingTasks(prev => new Set(prev).add(taskId));
     try {
       const result = await startTask(user.id, taskId);
@@ -802,8 +910,8 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
         
         // REDIRECT: For non-AD tasks with links, open using mobile-friendly method
         if (link && taskType !== TASK_TYPES.AD) {
-          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice());
-          openLink(link);
+          console.log('Redirecting to:', link, 'Mobile:', isMobileDevice(), 'External:', isExternal);
+          openLink(link, isExternal || false);
         }
         
         // For AD tasks, show the ad and auto-claim
@@ -906,6 +1014,43 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
 
       <PromoCodeSection setUser={setUser} />
 
+      {/* Ads Tasks Section - MOVED TO TOP */}
+      <section className="mb-8">
+        <SectionHeader
+          title="Ads Tasks"
+          icon={ICONS.checkIn}
+          taskCount={availableAdsGramTasks.length}
+        />
+        <div className="space-y-4">
+          {availableAdsGramTasks.length > 0 ? (
+            availableAdsGramTasks.map((task) => (
+              <Task 
+                key={task.id}
+                debug={false} 
+                blockId={(task as any).adsgram_block_id}
+                userId={user.id}
+                onTaskComplete={(reward) => {
+                  // Refresh user data to show updated coins
+                  loadAllData();
+                }}
+              />
+            ))
+          ) : (
+            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl text-center border border-slate-700/50 backdrop-blur-sm">
+              <div className="w-16 h-16 mx-auto mb-4 text-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-slate-300 mb-2">No AdsGram tasks available</h3>
+              <p className="text-slate-500">Check back later for new video tasks</p>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* Daily tasks with progress (EXCLUDES AdsGram tasks) */}
       <section className="mb-8">
         <SectionHeader
@@ -980,43 +1125,6 @@ const EarningsPage: React.FC<{ setUser: (user: User) => void; user: User }> = ({
             TaskComponent={CampaignTaskItem}
             onShowMore={partnerTasks.length > 5 ? () => loadMoreCampaigns('PARTNER') : undefined}
           />
-
-          {/* AdsGram Tasks Section with proper not found handling */}
-          <section className="mb-8">
-            <SectionHeader
-              title="Ads Tasks"
-              icon={ICONS.checkIn}
-              taskCount={availableAdsGramTasks.length}
-            />
-            <div className="space-y-4">
-              {availableAdsGramTasks.length > 0 ? (
-                availableAdsGramTasks.map((task) => (
-                  <Task 
-                    key={task.id}
-                    debug={false} 
-                    blockId={(task as any).adsgram_block_id}
-                    userId={user.id}
-                    onTaskComplete={(reward) => {
-                      // Refresh user data to show updated coins
-                      loadAllData();
-                    }}
-                  />
-                ))
-              ) : (
-                <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 p-8 rounded-2xl text-center border border-slate-700/50 backdrop-blur-sm">
-                  <div className="w-16 h-16 mx-auto mb-4 text-slate-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="8" x2="12" y2="12"></line>
-                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-300 mb-2">No AdsGram tasks available</h3>
-                  <p className="text-slate-500">Check back later for new video tasks</p>
-                </div>
-              )}
-            </div>
-          </section>
         </div>
       </div>
     </div>

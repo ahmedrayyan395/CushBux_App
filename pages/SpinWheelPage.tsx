@@ -9,6 +9,14 @@ import PrizeNotification from '../components/PrizeNotification';
 import { spinWheel, watchAdForSpin } from '../services/api';
 import ProgressBar from '../components/ProgressBar';
 
+// AdsGram SDK initialization
+let AdController;
+try {
+  AdController = window.Adsgram?.init({ blockId: "int-15335" });
+} catch (error) {
+  console.error("Failed to initialize AdsGram SDK:", error);
+}
+
 // ... (The rest of the imports and the EarnSpinOption component are unchanged)
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
@@ -69,10 +77,78 @@ const SpinWheelPage: React.FC<{
 
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
+  const adProviderToggle = useRef(false); // Toggle between AdsGram and show_9692552
 
   useEffect(() => {
     currentSpins.current = user?.spins ?? 0;
   }, [user?.spins, user?.coins, user?.ad_credit]);
+
+  // Function to show random interstitial ad
+  const showInterstitialAd = async (): Promise<boolean> => {
+    if (Math.random() < 0.3) { // 30% chance to show interstitial
+      try {
+        if (AdController) {
+          await AdController.show();
+          console.log("Interstitial ad shown successfully");
+        }
+        return true;
+      } catch (error) {
+        console.error("Interstitial ad failed:", error);
+        return false;
+      }
+    }
+    return false;
+  };
+
+  // Function to show reward ad (alternating between providers)
+  const showRewardAd = async (): Promise<boolean> => {
+    setAdLoading(true);
+    try {
+      let result;
+      
+      if (adProviderToggle.current && AdController) {
+        // Use AdsGram reward ad
+        result = await AdController.show();
+        if (result.done) {
+          console.log("AdsGram reward ad completed successfully");
+          adProviderToggle.current = !adProviderToggle.current;
+          return true;
+        } else {
+          throw new Error("AdsGram ad not completed");
+        }
+      } else {
+        // Use show_9692552
+        await show_9692552();
+        console.log("show_9692552 ad completed successfully");
+        adProviderToggle.current = !adProviderToggle.current;
+        return true;
+      }
+    } catch (error) {
+      console.error("Reward ad failed:", error);
+      // Try fallback provider
+      try {
+        if (!adProviderToggle.current && AdController) {
+          const fallbackResult = await AdController.show();
+          if (fallbackResult.done) {
+            console.log("Fallback AdsGram ad completed");
+            adProviderToggle.current = !adProviderToggle.current;
+            return true;
+          }
+        } else {
+          await show_9692552();
+          console.log("Fallback show_9692552 completed");
+          adProviderToggle.current = !adProviderToggle.current;
+          return true;
+        }
+      } catch (fallbackError) {
+        console.error("All ad providers failed:", fallbackError);
+        return false;
+      }
+      return false;
+    } finally {
+      setAdLoading(false);
+    }
+  };
 
   const handleSpin = async (): Promise<boolean> => {
     if (isSpinning || currentSpins.current <= 0 || !user) return false;
@@ -158,11 +234,14 @@ const SpinWheelPage: React.FC<{
     while (autoSpinActive.current) {
       if (currentSpins.current <= 0) {
         try {
-          await show_9692552();
-          const result = await watchAdForSpin(user.id);
-          if (result.success && result.user) {
-            setUser(result.user);
-            currentSpins.current = result.user.spins;
+          // Use reward ad to earn spins during auto-spin
+          const adSuccess = await showRewardAd();
+          if (adSuccess) {
+            const result = await watchAdForSpin(user.id);
+            if (result.success && result.user) {
+              setUser(result.user);
+              currentSpins.current = result.user.spins;
+            }
           }
         } catch (e) {
           console.error("Auto earn spin failed:", e);
@@ -177,11 +256,17 @@ const SpinWheelPage: React.FC<{
       spinsInSession++;
       const success = await handleSpin();
 
+      // Show interstitial ad randomly after spins
+      if (success && Math.random() < 0.4) { // 40% chance after successful spin
+        await showInterstitialAd();
+      }
+
       await new Promise(resolve => setTimeout(resolve, success ? 4250 : 500));
 
+      // Show reward ad every 5 spins during auto-spin
       if (spinsInSession % 5 === 0 && autoSpinActive.current) {
         try {
-          await show_9692552();
+          await showRewardAd();
         } catch (e) {
           console.error("Ad failed during auto-spin", e);
         }
@@ -205,17 +290,16 @@ const SpinWheelPage: React.FC<{
   const handleWatchAd = async () => {
     if (!user) return;
     
-    setAdLoading(true);
-    try {
-      await show_9692552();
-      const result = await watchAdForSpin(user.id);
-      if (result.success && result.user) {
-        setUser(result.user);
+    const success = await showRewardAd();
+    if (success) {
+      try {
+        const result = await watchAdForSpin(user.id);
+        if (result.success && result.user) {
+          setUser(result.user);
+        }
+      } catch (e) {
+        console.error("API call failed after ad:", e);
       }
-    } catch (e) {
-      console.error("Ad failed:", e);
-    } finally {
-      setAdLoading(false);
     }
   };
 

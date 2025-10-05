@@ -117,87 +117,98 @@ export const SPIN_WHEEL_PRIZES = [
     value: 100,
     type: "coins",
     color: "linear-gradient(135deg, #FFD700, #FFA500)",
-    textColor: "#000"
+    textColor: "#000",
+    icon: ""
   },
   {
     label: "250 Coins",
     value: 250,
     type: "coins",
     color: "linear-gradient(135deg, #FFB347, #FFCC33)",
-    textColor: "#000"
+    textColor: "#000",
+    icon: ""
   },
   {
     label: "500 Coins",
     value: 500,
     type: "coins",
     color: "linear-gradient(135deg, #FFD700, #FF8C00)",
-    textColor: "#000"
+    textColor: "#000",
+    icon: ""
   },
   {
-    label: "1000 Coins",
-    value: 1000,
-    type: "coins",
-    color: "linear-gradient(135deg, #FFA500, #FF4500)",
-    textColor: "#fff"
+    label: "3 Rings",
+    value: 3,
+    type: "rings",
+    color: "linear-gradient(135deg, #E6E6FA, #D8BFD8)",
+    textColor: "#000",
+    icon: ""
   },
   {
     label: "1 Spin",
     value: 1,
     type: "spins",
     color: "linear-gradient(135deg, #00FF00, #32CD32)",
-    textColor: "#000"
+    textColor: "#000",
+    icon: ""
   },
   {
     label: "2 Spins",
     value: 2,
     type: "spins",
     color: "linear-gradient(135deg, #32CD32, #228B22)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   },
   {
     label: "5 Spins",
     value: 5,
     type: "spins",
     color: "linear-gradient(135deg, #228B22, #006400)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   },
   {
-    label: "0.001 TON",
-    value: 0.001,
-    type: "ton",
-    color: "linear-gradient(135deg, #0099FF, #0066CC)",
-    textColor: "#fff"
+    label: "5 Rings",
+    value: 5,
+    type: "rings",
+    color: "linear-gradient(135deg, #9370DB, #8A2BE2)",
+    textColor: "#fff",
+    icon: ""
   },
   {
     label: "0.005 TON",
     value: 0.005,
     type: "ton",
     color: "linear-gradient(135deg, #0066CC, #004499)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   },
   {
     label: "0.01 TON",
     value: 0.01,
     type: "ton",
     color: "linear-gradient(135deg, #004499, #002266)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   },
   {
     label: "Better luck!",
     value: 0,
     type: "none",
     color: "linear-gradient(135deg, #888888, #555555)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   },
   {
     label: "Jackpot!",
     value: 2000,
     type: "coins",
     color: "linear-gradient(135deg, #FF0000, #FF4500)",
-    textColor: "#fff"
+    textColor: "#fff",
+    icon: ""
   }
 ];
-
 
 export const INITIAL_USER: User = {
   id: 1,

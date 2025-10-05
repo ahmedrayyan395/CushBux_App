@@ -4015,11 +4015,11 @@ def spin_wheel():
             {"label": "100 Coins", "value": 100, "type": "coins", "weight": 25},
             {"label": "250 Coins", "value": 250, "type": "coins", "weight": 20},
             {"label": "500 Coins", "value": 500, "type": "coins", "weight": 12},
-            {"label": "1000 Coins", "value": 1000, "type": "coins", "weight": 8},
+            {"label": "3 Rings", "value": 3, "type": "rings", "weight": 10},
             {"label": "1 Spin", "value": 1, "type": "spins", "weight": 15},
             {"label": "2 Spins", "value": 2, "type": "spins", "weight": 8},
             {"label": "5 Spins", "value": 5, "type": "spins", "weight": 3},
-            {"label": "0.001 TON", "value": 0.001, "type": "ton", "weight": 4},
+            {"label": "5 Rings", "value": 5, "type": "rings", "weight": 2},
             {"label": "0.005 TON", "value": 0.005, "type": "ton", "weight": 2},
             {"label": "0.01 TON", "value": 0.01, "type": "ton", "weight": 1},
             {"label": "Better luck!", "value": 0, "type": "none", "weight": 1},  # Very rare "bad luck"
@@ -4048,6 +4048,14 @@ def spin_wheel():
         elif selected_prize["type"] == "spins":
             user.spins += selected_prize["value"]
             
+        elif selected_prize["type"] == "rings":
+            # Assuming you have a rings field in your User model
+            if hasattr(user, 'rings'):
+                user.rings += selected_prize["value"]
+            else:
+                # If rings field doesn't exist, you might want to add it to your User model
+                user.coins += selected_prize["value"] * 100  # Fallback: convert rings to coins
+                
         elif selected_prize["type"] == "ton":
             # Assuming you have a TON balance field or using ad_credit for TON
             if hasattr(user, 'ton'):
@@ -4073,6 +4081,8 @@ def spin_wheel():
             message = "Better luck next time!"
         elif selected_prize["label"] == "Jackpot!":
             message = "🎉 JACKPOT! You won 2000 Coins + 5 bonus spins! 🎉"
+        elif selected_prize["type"] == "rings":
+            message = f"🎊 Congratulations! You won {selected_prize['value']} Rings! 🎊"
         else:
             message = f"Congratulations! You won {selected_prize['label']}"
         
@@ -4087,7 +4097,6 @@ def spin_wheel():
         db.session.rollback()
         print(f"Spin error: {e}")
         return jsonify({"success": False, "message": "Spin failed"}), 500
-
 
 
 @app.route('/api/spin/watch-ad', methods=['POST'])

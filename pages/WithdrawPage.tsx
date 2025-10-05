@@ -622,13 +622,15 @@ const validateWithdrawalAmount = (amount: number): { isValid: boolean; message: 
           </div>
         )}
 
-        {withdrawAmount && (
-  <div className="p-3 bg-slate-700/30 rounded-xl mt-2">
-    <p className="text-slate-300 text-sm text-center">
-      Required: {(parseFloat(withdrawAmount) * TON_TO_RINGS).toLocaleString()} Rings
+  {withdrawAmount && (
+  <div className="p-4 bg-slate-800/50 rounded-xl mt-3 border border-slate-600/50 backdrop-blur-sm">
+    <p className="text-blue-400 text-sm text-center flex items-center justify-center space-x-2 font-semibold mb-2">
+      <span>Required: {(parseFloat(withdrawAmount) * TON_TO_RINGS).toLocaleString()} Rings</span>
+      <span className="text-lg text-blue-300">💍</span>
     </p>
-    <p className="text-slate-400 text-xs text-center mt-1">
-      You have: {user?.rings ? Number(user.rings).toLocaleString() : 0} Rings
+    <p className="text-green-400 text-xs text-center flex items-center justify-center space-x-2 font-medium">
+      <span>Available: {user?.rings ? Number(user.rings).toLocaleString() : 0} Rings</span>
+      <span className="text-lg text-green-300">💍</span>
     </p>
   </div>
 )}

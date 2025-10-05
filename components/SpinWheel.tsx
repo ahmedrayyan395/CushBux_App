@@ -6,6 +6,7 @@ interface Prize {
   type: string;
   color: string;
   textColor?: string;
+  icon: string;
 }
 
 interface SpinWheelProps {
@@ -20,7 +21,7 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
 
   useImperativeHandle(ref, () => wheelRef.current!);
 
-  // Improved canvas drawing with DPI scaling
+  // Improved canvas drawing with DPI scaling and icons beside text
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -45,48 +46,73 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
     const drawWheel = () => {
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
-      const radius = Math.min(centerX, centerY) - 10;
+      const radius = Math.min(centerX, centerY) - 15;
       
       // Clear with proper dimensions
       ctx.clearRect(0, 0, rect.width, rect.height);
       
-      // Draw glow effect
-      const gradient = ctx.createRadialGradient(centerX, centerY, radius - 5, centerX, centerY, radius + 15);
-      gradient.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
+      // Draw outer glow effect
+      const gradient = ctx.createRadialGradient(centerX, centerY, radius - 10, centerX, centerY, radius + 20);
+      gradient.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+      gradient.addColorStop(0.7, 'rgba(255, 215, 0, 0.1)');
       gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
       
       ctx.beginPath();
-      ctx.arc(centerX, centerY, radius + 10, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, radius + 15, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
       ctx.fill();
       
       const segmentAngle = (Math.PI * 2) / prizes.length;
       
-      // Draw segments
+      // Draw segments with improved styling
       prizes.forEach((prize, index) => {
         const startAngle = index * segmentAngle;
         const endAngle = (index + 1) * segmentAngle;
+        
+        // Create segment gradient
+        const segmentGradient = ctx.createLinearGradient(
+          centerX + Math.cos(startAngle) * radius * 0.3,
+          centerY + Math.sin(startAngle) * radius * 0.3,
+          centerX + Math.cos(endAngle) * radius * 0.8,
+          centerY + Math.sin(endAngle) * radius * 0.8
+        );
+        
+        if (prize.color.includes('gradient')) {
+          // Extract colors from gradient string for fallback
+          const colors = prize.color.match(/#[0-9A-Fa-f]{6}/g) || ['#FFD700', '#FFA500'];
+          segmentGradient.addColorStop(0, colors[0]);
+          segmentGradient.addColorStop(1, colors[1] || colors[0]);
+        } else {
+          segmentGradient.addColorStop(0, prize.color);
+          segmentGradient.addColorStop(1, prize.color);
+        }
         
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
         ctx.arc(centerX, centerY, radius, startAngle, endAngle);
         ctx.closePath();
         
-        ctx.fillStyle = prize.color;
+        ctx.fillStyle = segmentGradient;
         ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        
+        // Draw segment border
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Draw text
+        // Draw text and icon beside each other
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(startAngle + segmentAngle / 2);
         
-        ctx.fillStyle = prize.textColor || '#ffffff';
-        ctx.font = 'bold 12px Inter, sans-serif';
+        const textRadius = radius * 0.7;
+        const iconSize = radius * 0.1;
+        
+        // Draw label and icon side by side
+        ctx.font = 'bold 11px Inter, sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.fillStyle = prize.textColor || '#ffffff';
         
         const maxWidth = radius * 0.6;
         const words = prize.label.split(' ');
@@ -104,43 +130,79 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
         }
         lines.push(currentLine);
         
-        const lineHeight = 14;
+        const lineHeight = 12;
         const totalHeight = lines.length * lineHeight;
         
+        // Draw text lines
         lines.forEach((line, lineIndex) => {
-          ctx.fillText(line, radius * 0.65, -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2);
+          ctx.fillText(
+            line, 
+            textRadius, 
+            -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2
+          );
         });
+        
+        // Draw icon to the right of the text
+        ctx.font = `bold ${iconSize}px Arial`;
+        const textWidth = ctx.measureText(prize.label).width;
+        const iconX = textRadius + textWidth / 2 + iconSize / 2;
+        const iconY = -totalHeight / 2 + totalHeight / 2;
+        
+        ctx.fillText(prize.icon, iconX, iconY);
         
         ctx.restore();
       });
       
-      // Draw center circle
+      // Draw inner decorative ring
       ctx.beginPath();
-      ctx.arc(centerX, centerY, radius * 0.12, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+      ctx.arc(centerX, centerY, radius * 0.85, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      
+      // Draw center circle with gradient
+      const centerGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 0.15);
+      centerGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+      centerGradient.addColorStop(1, 'rgba(255, 215, 0, 0.9)');
+      
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius * 0.15, 0, Math.PI * 2);
+      ctx.fillStyle = centerGradient;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      
+      // Draw center border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
       ctx.lineWidth = 3;
       ctx.stroke();
       
-      // Draw center text
+      // Draw center text with shadow
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
       ctx.fillStyle = '#000';
-      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.font = 'bold 16px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('SPIN', centerX, centerY);
+      
+      // Reset shadow
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
     };
 
     drawWheel();
   }, [prizes]);
 
-  // Resize observer to handle screen rotation and resizing
+  // Resize observer with improved drawing
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const observer = new ResizeObserver(() => {
-      // Force redraw on resize
       const ctx = canvas.getContext('2d');
       if (ctx) {
         const dpr = window.devicePixelRatio || 1;
@@ -156,16 +218,17 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
         const drawWheel = () => {
           const centerX = rect.width / 2;
           const centerY = rect.height / 2;
-          const radius = Math.min(centerX, centerY) - 10;
+          const radius = Math.min(centerX, centerY) - 15;
           
           ctx.clearRect(0, 0, rect.width, rect.height);
           
-          const gradient = ctx.createRadialGradient(centerX, centerY, radius - 5, centerX, centerY, radius + 15);
-          gradient.addColorStop(0, 'rgba(255, 215, 0, 0.3)');
+          const gradient = ctx.createRadialGradient(centerX, centerY, radius - 10, centerX, centerY, radius + 20);
+          gradient.addColorStop(0, 'rgba(255, 215, 0, 0.4)');
+          gradient.addColorStop(0.7, 'rgba(255, 215, 0, 0.1)');
           gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
           
           ctx.beginPath();
-          ctx.arc(centerX, centerY, radius + 10, 0, Math.PI * 2);
+          ctx.arc(centerX, centerY, radius + 15, 0, Math.PI * 2);
           ctx.fillStyle = gradient;
           ctx.fill();
           
@@ -175,14 +238,30 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
             const startAngle = index * segmentAngle;
             const endAngle = (index + 1) * segmentAngle;
             
+            const segmentGradient = ctx.createLinearGradient(
+              centerX + Math.cos(startAngle) * radius * 0.3,
+              centerY + Math.sin(startAngle) * radius * 0.3,
+              centerX + Math.cos(endAngle) * radius * 0.8,
+              centerY + Math.sin(endAngle) * radius * 0.8
+            );
+            
+            if (prize.color.includes('gradient')) {
+              const colors = prize.color.match(/#[0-9A-Fa-f]{6}/g) || ['#FFD700', '#FFA500'];
+              segmentGradient.addColorStop(0, colors[0]);
+              segmentGradient.addColorStop(1, colors[1] || colors[0]);
+            } else {
+              segmentGradient.addColorStop(0, prize.color);
+              segmentGradient.addColorStop(1, prize.color);
+            }
+            
             ctx.beginPath();
             ctx.moveTo(centerX, centerY);
             ctx.arc(centerX, centerY, radius, startAngle, endAngle);
             ctx.closePath();
             
-            ctx.fillStyle = prize.color;
+            ctx.fillStyle = segmentGradient;
             ctx.fill();
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
             ctx.lineWidth = 2;
             ctx.stroke();
             
@@ -190,10 +269,14 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
             ctx.translate(centerX, centerY);
             ctx.rotate(startAngle + segmentAngle / 2);
             
-            ctx.fillStyle = prize.textColor || '#ffffff';
-            ctx.font = 'bold 12px Inter, sans-serif';
+            const textRadius = radius * 0.7;
+            const iconSize = radius * 0.1;
+            
+            // Draw label and icon side by side
+            ctx.font = 'bold 11px Inter, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.fillStyle = prize.textColor || '#ffffff';
             
             const maxWidth = radius * 0.6;
             const words = prize.label.split(' ');
@@ -211,29 +294,62 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
             }
             lines.push(currentLine);
             
-            const lineHeight = 14;
+            const lineHeight = 12;
             const totalHeight = lines.length * lineHeight;
             
+            // Draw text lines
             lines.forEach((line, lineIndex) => {
-              ctx.fillText(line, radius * 0.65, -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2);
+              ctx.fillText(
+                line, 
+                textRadius, 
+                -totalHeight / 2 + lineIndex * lineHeight + lineHeight / 2
+              );
             });
+            
+            // Draw icon to the right of the text
+            ctx.font = `bold ${iconSize}px Arial`;
+            const textWidth = ctx.measureText(prize.label).width;
+            const iconX = textRadius + textWidth / 2 + iconSize / 2;
+            const iconY = -totalHeight / 2 + totalHeight / 2;
+            
+            ctx.fillText(prize.icon, iconX, iconY);
             
             ctx.restore();
           });
           
           ctx.beginPath();
-          ctx.arc(centerX, centerY, radius * 0.12, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 215, 0, 0.9)';
+          ctx.arc(centerX, centerY, radius * 0.85, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
+          const centerGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 0.15);
+          centerGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+          centerGradient.addColorStop(1, 'rgba(255, 215, 0, 0.9)');
+          
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius * 0.15, 0, Math.PI * 2);
+          ctx.fillStyle = centerGradient;
           ctx.fill();
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
           ctx.lineWidth = 3;
           ctx.stroke();
           
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+          
           ctx.fillStyle = '#000';
-          ctx.font = 'bold 14px Inter, sans-serif';
+          ctx.font = 'bold 16px Inter, sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('SPIN', centerX, centerY);
+          
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
         };
         
         drawWheel();
@@ -247,7 +363,7 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
     };
   }, [prizes]);
 
-  // Improved animation with better performance
+  // Animation effect
   useEffect(() => {
     const wheel = wheelRef.current;
     if (!wheel) return;
@@ -256,12 +372,11 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
       if (isSpinning) {
         wheel.style.transition = 'transform 4s cubic-bezier(0.17, 0.67, 0.83, 0.67)';
         wheel.style.transform = `rotate(${rotation}deg)`;
-        wheel.style.boxShadow = '0 0 50px rgba(255, 215, 0, 0.7)';
+        wheel.style.boxShadow = '0 0 60px rgba(255, 215, 0, 0.8)';
       } else {
-        // Use GPU acceleration and ensure smooth stop
         wheel.style.transition = 'transform 0.1s ease-out';
         wheel.style.transform = `rotate(${rotation % 360}deg)`;
-        wheel.style.boxShadow = '0 0 20px rgba(255, 215, 0, 0.3)';
+        wheel.style.boxShadow = '0 0 30px rgba(255, 215, 0, 0.4)';
       }
     };
 
@@ -273,28 +388,34 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
   };
 
   return (
-    <div className="relative flex items-center justify-center mb-4 spin-wheel-container" onTouchStart={handleTouchStart}>
-      {/* Pointer indicator */}
+    <div className="relative flex items-center justify-center mb-8 spin-wheel-container" onTouchStart={handleTouchStart}>
+      {/* Enhanced Pointer indicator */}
       <div className="absolute top-0 z-20 transform -translate-y-1/2">
         <div className="relative">
-          <div className="w-6 h-8 bg-gradient-to-b from-red-500 to-red-700 rounded-t-lg"></div>
-          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-3 h-3 bg-red-700 rotate-45"></div>
-          <div className="absolute top-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-full opacity-60"></div>
+          <div className="w-8 h-10 bg-gradient-to-b from-red-600 to-red-800 rounded-t-lg shadow-lg border border-red-400"></div>
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 w-4 h-4 bg-red-800 rotate-45 border-t border-l border-red-600"></div>
+          <div className="absolute top-1.5 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-white rounded-full opacity-70 shadow-inner"></div>
+          <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1 h-2 bg-red-900 rounded-b-lg"></div>
         </div>
       </div>
       
-      {/* Main wheel container */}
-      <div className="relative w-72 h-72 mx-auto">
-        {/* Background glow */}
-        <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/20 to-orange-600/10 rounded-full blur-xl animate-pulse"></div>
+      {/* Main wheel container - Larger size */}
+      <div className="relative w-96 h-96 mx-auto">
+        {/* Enhanced Background glow */}
+        <div className="absolute inset-0 bg-gradient-to-br from-yellow-400/30 via-orange-500/20 to-red-600/10 rounded-full blur-2xl animate-pulse-slow"></div>
         
-        {/* Wheel with fixed aspect ratio */}
+        {/* Outer decorative rings */}
+        <div className="absolute inset-0 border-8 border-yellow-500/10 rounded-full animate-pulse"></div>
+        <div className="absolute inset-4 border-4 border-yellow-400/20 rounded-full"></div>
+        
+        {/* Wheel with enhanced styling */}
         <div
           ref={wheelRef}
-          className="relative w-full h-full rounded-full shadow-xl border-4 border-yellow-500/20 overflow-hidden"
+          className="relative w-full h-full rounded-full shadow-2xl border-8 border-yellow-500/30 overflow-hidden bg-gradient-to-br from-yellow-200/10 to-orange-600/10"
           style={{ 
             willChange: 'transform',
-            aspectRatio: '1 / 1'
+            aspectRatio: '1 / 1',
+            backdropFilter: 'blur(10px)'
           }}
         >
           <canvas
@@ -303,13 +424,16 @@ const SpinWheel = forwardRef<HTMLDivElement, SpinWheelProps>(({ rotation, isSpin
           />
         </div>
         
-        {/* Decorative border */}
-        <div className="absolute inset-3 border border-yellow-400/20 rounded-full pointer-events-none"></div>
+        {/* Enhanced decorative border */}
+        <div className="absolute inset-6 border-2 border-yellow-400/30 rounded-full pointer-events-none shadow-inner"></div>
         
         {/* Spinning overlay effect */}
         {isSpinning && (
-          <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/10 via-orange-500/5 to-yellow-400/10 rounded-full animate-spin-slow pointer-events-none"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-yellow-400/15 to-transparent rounded-full animate-spin-slow pointer-events-none"></div>
         )}
+        
+        {/* Outer glow ring */}
+        <div className="absolute -inset-4 bg-gradient-to-r from-yellow-400/20 via-orange-500/10 to-yellow-400/20 rounded-full blur-md pointer-events-none"></div>
       </div>
     </div>
   );
