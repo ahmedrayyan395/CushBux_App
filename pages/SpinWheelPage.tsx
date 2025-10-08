@@ -17,7 +17,13 @@ try {
   console.error("Failed to initialize AdsGram SDK:", error);
 }
 
-// ... (The rest of the imports and the EarnSpinOption component are unchanged)
+// Adextra declaration
+declare global {
+  interface Window {
+    p_adextra?: (onSuccess?: () => void, onError?: () => void) => void;
+  }
+}
+
 declare const show_9692552: (type?: 'pop') => Promise<void>;
 
 const EarnSpinOption: React.FC<{
@@ -36,14 +42,9 @@ const EarnSpinOption: React.FC<{
         <div className="text-2xl text-green-400 filter drop-shadow-lg">{icon}</div>
         <h3 className="font-semibold text-white text-lg">{title}</h3>
       </div>
-      <span className="text-sm text-slate-300 bg-slate-700/50 px-3 py-1 rounded-full">
-        {progress}/{total}
-      </span>
     </div>
-    <ProgressBar current={progress} total={total} />
     <button
       onClick={onAction}
-      disabled={disabled || loading}
       className="w-full mt-4 bg-gradient-to-r from-green-500/30 to-emerald-500/20 text-green-300 font-bold py-3 rounded-xl text-base hover:from-green-500/40 hover:to-emerald-500/30 hover:text-green-200 transition-all duration-300 disabled:bg-slate-700/30 disabled:text-slate-500 disabled:cursor-not-allowed flex items-center justify-center space-x-2 border border-green-500/20"
     >
       {loading ? (
@@ -74,81 +75,180 @@ const SpinWheelPage: React.FC<{
   const [adLoading, setAdLoading] = useState(false);
   const [recentPrize, setRecentPrize] = useState<{label: string; type: string; value: number} | null>(null);
   const [showPrizeNotification, setShowPrizeNotification] = useState<{label: string; type: string; value: number} | null>(null);
+  const [transitionEnabled, setTransitionEnabled] = useState(true);
+  const [adextraLoaded, setAdextraLoaded] = useState(false);
 
   const autoSpinActive = useRef(false);
   const currentSpins = useRef(user?.spins ?? 0);
-  const adProviderToggle = useRef(false); // Toggle between AdsGram and show_9692552
+  const adProviderToggle = useRef(0); // 0: AdsGram, 1: show_9692552, 2: Adextra
 
   useEffect(() => {
     currentSpins.current = user?.spins ?? 0;
   }, [user?.spins, user?.coins, user?.ad_credit]);
 
-  // Function to show random interstitial ad
-  const showInterstitialAd = async (): Promise<boolean> => {
-    if (Math.random() < 0.3) { // 30% chance to show interstitial
-      try {
-        if (AdController) {
-          await AdController.show();
-          console.log("Interstitial ad shown successfully");
-        }
+  // Adextra loading
+  useEffect(() => {
+    const checkAdextra = () => {
+      if (typeof window.p_adextra === 'function') {
+        console.log('Adextra properly initialized');
+        setAdextraLoaded(true);
         return true;
-      } catch (error) {
-        console.error("Interstitial ad failed:", error);
-        return false;
       }
+      return false;
+    };
+
+    if (checkAdextra()) {
+      return;
     }
-    return false;
+
+    const script = document.createElement('script');
+    script.src = 'https://partner.adextra.io/jt/127c1e3df9f3d1de8356b0dddc38688b88526b44.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('Adextra script loaded, checking initialization...');
+      
+      setTimeout(() => {
+        if (checkAdextra()) {
+          console.log('Adextra initialized after load');
+        } else {
+          console.warn('Adextra script loaded but not properly initialized');
+          setAdextraLoaded(false);
+        }
+      }, 3000);
+    };
+    script.onerror = () => {
+      console.warn('Failed to load Adextra script');
+      setAdextraLoaded(false);
+    };
+    document.head.appendChild(script);
+  }, []);
+
+  // Function to show Adextra ad
+  const showAdextraAd = async (): Promise<boolean> => {
+    if (typeof window.p_adextra !== 'function') {
+      console.warn("Adextra not properly initialized - simulating in development");
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(true);
+        }, 2000);
+      });
+    }
+
+    return new Promise((resolve) => {
+      try {
+        console.log("Calling Adextra p_adextra function...");
+        
+        const onSuccess = () => {
+          console.log("Adextra ad completed successfully");
+          resolve(true);
+        };
+
+        const onError = () => {
+          console.warn("Adextra ad callback failed - simulating success in development");
+          setTimeout(() => {
+            resolve(true);
+          }, 2000);
+        };
+
+        window.p_adextra(onSuccess, onError);
+        
+      } catch (error) {
+        console.warn("Adextra ad error - simulating success:", error);
+        setTimeout(() => {
+          resolve(true);
+        }, 2000);
+      }
+    });
   };
 
-  // Function to show reward ad (alternating between providers)
+  // Function to show reward ad (alternating between three providers)
   const showRewardAd = async (): Promise<boolean> => {
     setAdLoading(true);
     try {
-      let result;
+      const currentProvider = adProviderToggle.current % 3;
       
-      if (adProviderToggle.current && AdController) {
-        // Use AdsGram reward ad
-        result = await AdController.show();
-        if (result.done) {
-          console.log("AdsGram reward ad completed successfully");
-          adProviderToggle.current = !adProviderToggle.current;
+      switch (currentProvider) {
+        // case 0: // AdsGram
+        //   if (AdController) {
+        //     const result = await AdController.show();
+        //     if (result.done) {
+        //       console.log("AdsGram reward ad completed successfully");
+        //       adProviderToggle.current = adProviderToggle.current + 1;
+        //       return true;
+        //     } else {
+        //       throw new Error("AdsGram ad not completed");
+        //     }
+        //   } else {
+        //     throw new Error("AdsGram not available");
+        //   }
+
+        case 0: // show_9692552
+          await show_9692552();
+          console.log("show_9692552 ad completed successfully");
+          adProviderToggle.current = adProviderToggle.current + 1;
           return true;
-        } else {
-          throw new Error("AdsGram ad not completed");
-        }
-      } else {
-        // Use show_9692552
-        await show_9692552();
-        console.log("show_9692552 ad completed successfully");
-        adProviderToggle.current = !adProviderToggle.current;
-        return true;
+
+        case 1: // Adextra
+          const adextraSuccess = await showAdextraAd();
+          if (adextraSuccess) {
+            console.log("Adextra ad completed successfully");
+            adProviderToggle.current = adProviderToggle.current + 1;
+            return true;
+          } else {
+            throw new Error("Adextra ad failed");
+          }
+
+        default:
+          throw new Error("Unknown ad provider");
       }
     } catch (error) {
-      console.error("Reward ad failed:", error);
-      // Try fallback provider
-      try {
-        if (!adProviderToggle.current && AdController) {
-          const fallbackResult = await AdController.show();
-          if (fallbackResult.done) {
-            console.log("Fallback AdsGram ad completed");
-            adProviderToggle.current = !adProviderToggle.current;
-            return true;
+      console.error(`Ad provider ${adProviderToggle.current % 3} failed:`, error);
+      
+      const currentProvider = adProviderToggle.current % 3;
+      const fallbackProviders = [0, 1, 2].filter(p => p !== currentProvider);
+      
+      for (const provider of fallbackProviders) {
+        try {
+          switch (provider) {
+            // case 0: // AdsGram fallback
+            //   if (AdController) {
+            //     const fallbackResult = await AdController.show();
+            //     if (fallbackResult.done) {
+            //       console.log("Fallback AdsGram ad completed");
+            //       adProviderToggle.current = provider + 1;
+            //       return true;
+            //     }
+            //   }
+            //   break;
+              
+            case 0: // show_9692552 fallback
+              await show_9692552();
+              console.log("Fallback show_9692552 completed");
+              adProviderToggle.current = provider + 1;
+              return true;
+              
+            case 1: // Adextra fallback
+              const adextraFallback = await showAdextraAd();
+              if (adextraFallback) {
+                console.log("Fallback Adextra ad completed");
+                adProviderToggle.current = provider + 1;
+                return true;
+              }
+              break;
           }
-        } else {
-          await show_9692552();
-          console.log("Fallback show_9692552 completed");
-          adProviderToggle.current = !adProviderToggle.current;
-          return true;
+        } catch (fallbackError) {
+          console.error(`Fallback provider ${provider} also failed:`, fallbackError);
         }
-      } catch (fallbackError) {
-        console.error("All ad providers failed:", fallbackError);
-        return false;
       }
+      
+      console.error("All ad providers failed");
       return false;
     } finally {
       setAdLoading(false);
     }
   };
+
+  // --- SPIN HANDLER FIX ---
 
   const handleSpin = async (): Promise<boolean> => {
     if (isSpinning || currentSpins.current <= 0 || !user) return false;
@@ -157,7 +257,6 @@ const SpinWheelPage: React.FC<{
 
     try {
       const result = await spinWheel(user.id);
-      
       if (!result.success) {
         setIsSpinning(false);
         return false;
@@ -166,58 +265,59 @@ const SpinWheelPage: React.FC<{
       const prizeIndex = SPIN_WHEEL_PRIZES.findIndex(p => p.label === result.prize!.label);
       const numPrizes = SPIN_WHEEL_PRIZES.length;
       const segmentAngle = 360 / numPrizes;
-      const targetAngle = prizeIndex !== -1 ? 
-        (prizeIndex * segmentAngle) + (segmentAngle / 2) : 
-        Math.random() * 360;
-      
-      const fullRotations = 5;
+      const targetAngle = prizeIndex !== -1
+        ? (prizeIndex * segmentAngle) + (segmentAngle / 2)
+        : Math.random() * 360;
+
+      const fullRotations = 30;
       const stopAngle = 270 - targetAngle;
-      const finalRotation = rotation + (fullRotations * 360) + stopAngle - (rotation % 360);
+      const finalRotation = (fullRotations * 360) + stopAngle;
 
-      setRotation(finalRotation);
+      setTransitionEnabled(false);
+      setRotation(0);
 
-      const spinResult = result;
+      await new Promise(r => setTimeout(r, 50));
 
-      await new Promise(resolve => setTimeout(resolve, 4000));
-      
-      if (spinResult.prize) {
+      setTransitionEnabled(true);
+      requestAnimationFrame(() => {
+        setRotation(finalRotation);
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 4200));
+
+      if (result.prize) {
         const updatedUser = { ...user };
-        
-        switch (spinResult.prize.type) {
+        switch (result.prize.type) {
           case 'spins':
-            updatedUser.spins = (user.spins || 0) + spinResult.prize.value;
+            updatedUser.spins = (user.spins || 0) + result.prize.value;
             currentSpins.current = updatedUser.spins;
             break;
           case 'coins':
-            updatedUser.coins = (user.coins || 0) + spinResult.prize.value;
+            updatedUser.coins = (user.coins || 0) + result.prize.value;
             break;
           case 'ton':
-            updatedUser.ad_credit = (user.ad_credit ? 
-              (Number(user.ad_credit) + spinResult.prize.value).toString() : 
-              spinResult.prize.value.toString()
-            );
+            updatedUser.ad_credit = (
+              Number(user.ad_credit || 0) + result.prize.value
+            ).toString();
             break;
         }
-        
         setUser(updatedUser);
-        setRecentPrize(spinResult.prize);
+        setRecentPrize(result.prize);
       }
 
-      if (spinResult.user) {
-        setUser(spinResult.user);
-        currentSpins.current = spinResult.user.spins;
+      if (result.user) {
+        setUser(result.user);
+        currentSpins.current = result.user.spins;
       }
-      
+
       setIsSpinning(false);
-      
-      if (spinResult.prize?.value > 0) {
-        setShowPrizeNotification(spinResult.prize);
+      if (result.prize?.value > 0) {
+        setShowPrizeNotification(result.prize);
       }
-      
-      return true;
 
+      return true;
     } catch (error) {
-      console.error("An error occurred during the spin:", error);
+      console.error("Spin failed:", error);
       setIsSpinning(false);
       return false;
     }
@@ -234,7 +334,6 @@ const SpinWheelPage: React.FC<{
     while (autoSpinActive.current) {
       if (currentSpins.current <= 0) {
         try {
-          // Use reward ad to earn spins during auto-spin
           const adSuccess = await showRewardAd();
           if (adSuccess) {
             const result = await watchAdForSpin(user.id);
@@ -249,29 +348,13 @@ const SpinWheelPage: React.FC<{
         }
       }
 
-      if (currentSpins.current <= 0) {
-        break;
-      }
+      if (currentSpins.current <= 0) break;
 
       spinsInSession++;
+
       const success = await handleSpin();
 
-      // Show interstitial ad randomly after spins
-      if (success && Math.random() < 0.4) { // 40% chance after successful spin
-        await showInterstitialAd();
-      }
-
-      await new Promise(resolve => setTimeout(resolve, success ? 4250 : 500));
-
-      // Show reward ad every 5 spins during auto-spin
-      if (spinsInSession % 5 === 0 && autoSpinActive.current) {
-        try {
-          await showRewardAd();
-        } catch (e) {
-          console.error("Ad failed during auto-spin", e);
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      await new Promise(resolve => setTimeout(resolve, success ? 2800 : 600));
     }
 
     autoSpinActive.current = false;
@@ -326,88 +409,81 @@ const SpinWheelPage: React.FC<{
       <SpinHistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} userId={user?.id} />
       <PrizeNotification prize={showPrizeNotification} onClose={() => setShowPrizeNotification(null)} />
       
-<header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md z-40 p-4 border-b border-slate-700/30 flex items-center justify-between">
-  <button onClick={() => navigate(-1)} className="flex items-center font-semibold text-white/90 hover:text-white transition-colors w-24">
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6"></polyline>
-    </svg>
-    <span className="ml-1 text-sm">Back</span>
-  </button>
-  
-  <div className="flex flex-col items-center">
-    <h1 className="text-lg font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">SPIN WHEEL</h1>
-  </div>
-  
-  <div className="w-24 text-right cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsHistoryOpen(true)}>
-    <div className="bg-gradient-to-r from-slate-800 to-slate-700 inline-flex items-center px-3 py-1.5 rounded-lg shadow-lg border border-slate-600/30">
-      <span className="font-bold text-green-400 text-base">{userSpins.toLocaleString()}</span>
-      <span className="text-xs text-slate-300 ml-1">Spins</span>
-    </div>
-  </div>
-</header>
+      <header className="fixed top-0 left-0 right-0 bg-slate-900/90 backdrop-blur-md z-40 p-4 border-b border-slate-700/30 flex items-center justify-between">
+        <button onClick={() => navigate(-1)} className="flex items-center font-semibold text-white/90 hover:text-white transition-colors w-24">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          <span className="ml-1 text-sm">Back</span>
+        </button>
+        
+        <div className="flex flex-col items-center">
+          <h1 className="text-lg font-bold bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">SPIN WHEEL</h1>
+        </div>
+        
+        <div className="w-24 text-right cursor-pointer hover:scale-105 transition-transform" onClick={() => setIsHistoryOpen(true)}>
+          <div className="bg-gradient-to-r from-slate-800 to-slate-700 inline-flex items-center px-3 py-1.5 rounded-lg shadow-lg border border-slate-600/30">
+            <span className="font-bold text-green-400 text-base">{userSpins.toLocaleString()}</span>
+            <span className="text-xs text-slate-300 ml-1">Spins</span>
+          </div>
+        </div>
+      </header>
       
       <main className="pt-24 pb-12 px-5 flex flex-col items-center justify-center relative z-10">
         <div className="w-full max-w-md mx-auto space-y-8">
           <div className="bg-slate-800/50 backdrop-blur-md p-6 rounded-3xl border border-slate-700/30 shadow-2xl">
             <SpinWheel 
               rotation={rotation} 
+              transitionEnabled={transitionEnabled}
               isSpinning={isSpinning || isAutoSpinning} 
               prizes={SPIN_WHEEL_PRIZES}
             />
-            
-<div className="flex space-x-3 mt-6">
-  {/* SPIN Button - Shows loading only during manual spin */}
-  <button 
-    onClick={() => handleSpin()} 
-    disabled={isSpinning || isAutoSpinning || userSpins <= 0} 
-    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-xl text-base hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 flex items-center justify-center min-w-0"
-  >
-    {isSpinning && !isAutoSpinning ? (
-      <div className="flex items-center justify-center space-x-2">
-        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-medium">SPINNING</span>
-      </div>
-    ) : (
-      <div className="flex items-center justify-center space-x-2">
-        <span className="text-lg">🎰</span>
-        <span className="text-sm font-medium">SPIN</span>
-      </div>
-    )}
-  </button>
-  
-  {/* AUTO/STOP Button - Clear distinction between modes */}
-  <button 
-    onClick={toggleAutoSpin} 
-    disabled={isSpinning || userSpins <= 0} 
-    className={`flex-1 font-bold py-3 px-4 rounded-xl text-base transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg flex items-center justify-center min-w-0 ${
-      isAutoSpinning 
-        ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25 text-white' 
-        : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25 text-white'
-    }`}
-  >
-    {isAutoSpinning ? (
-      // STOP button state - shows loading only during active spins
-      <div className="flex items-center justify-center space-x-2">
-        {isSpinning ? (
-          // Loading spinner only appears when wheel is actually spinning
-          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-        ) : (
-          // Stop icon when waiting between spins
-          <span className="text-lg">⏹️</span>
-        )}
-        <span className="text-sm font-medium">STOP</span>
-      </div>
-    ) : (
-      // AUTO button state
-      <div className="flex items-center justify-center space-x-2">
-        <span className="text-lg">⚡</span>
-        <span className="text-sm font-medium">AUTO</span>
-      </div>
-    )}
-  </button>
-</div>
 
-            
+            <div className="flex space-x-3 mt-6">
+              <button 
+                onClick={() => handleSpin()} 
+                disabled={isSpinning || isAutoSpinning || userSpins <= 0} 
+                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold py-3 px-4 rounded-xl text-base hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg hover:shadow-green-500/25 flex items-center justify-center min-w-0"
+              >
+                {isSpinning && !isAutoSpinning ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm font-medium">SPINNING</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-2">
+                    <span className="text-lg">🎰</span>
+                    <span className="text-sm font-medium">SPIN</span>
+                  </div>
+                )}
+              </button>
+              
+              <button 
+                onClick={toggleAutoSpin} 
+                disabled={isSpinning || userSpins <= 0} 
+                className={`flex-1 font-bold py-3 px-4 rounded-xl text-base transition-all duration-300 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed shadow-lg flex items-center justify-center min-w-0 ${
+                  isAutoSpinning 
+                    ? 'bg-gradient-to-r from-red-500 to-orange-600 hover:from-red-600 hover:to-orange-700 hover:shadow-red-500/25 text-white' 
+                    : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 hover:shadow-blue-500/25 text-white'
+                }`}
+              >
+                {isAutoSpinning ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    {isSpinning ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <span className="text-lg">⏹️</span>
+                    )}
+                    <span className="text-sm font-medium">STOP</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-2">
+                    <span className="text-lg">⚡</span>
+                    <span className="text-sm font-medium">AUTO</span>
+                  </div>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-5">

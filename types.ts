@@ -24,11 +24,11 @@ declare interface AdsGramStatic {
   init(options: { blockId: string }): AdsGramController;
 }
 
-declare global {
-  interface Window {
-    Adsgram: AdsGramStatic;
-  }
-}
+// declare global {
+//   interface Window {
+//     Adsgram: any;
+//   }
+// }
 
 export {};
 

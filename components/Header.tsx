@@ -56,7 +56,7 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
             {/* Rings - Optimized for small numbers */}
             <div className="flex items-center space-x-1">
               <span className="inline-flex items-center justify-center w-4 h-4 text-blue-400 flex-shrink-0">
-                {ICONS.ring}
+                {/* {ICONS.ring} */}💍
               </span>
               <span className="font-bold text-white text-sm min-w-[35px] text-right tabular-nums">
                 {user?.rings != null ? formatNumber(user.rings) : '0'}
